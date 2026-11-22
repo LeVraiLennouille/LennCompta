@@ -25,8 +25,9 @@ nav#nav{display:flex;flex-direction:column;gap:2px;align-self:start;position:sti
 nav#nav a{padding:8px 12px;border-radius:8px;color:var(--muted);text-decoration:none;font-weight:500}
 nav#nav a:hover{background:var(--surface);color:var(--ink)}
 nav#nav a.on{background:var(--accent);color:var(--onaccent)}
+.ng{font:600 11px var(--font);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:12px 12px 4px}
 main{min-width:0;display:flex;flex-direction:column;gap:18px}
-@media (max-width:900px){.shell{grid-template-columns:minmax(0,1fr);gap:12px}nav#nav{flex-direction:row;overflow-x:auto;position:static;padding-bottom:4px}nav#nav a{white-space:nowrap}}
+@media (max-width:900px){.shell{grid-template-columns:minmax(0,1fr);gap:12px}nav#nav{flex-direction:row;overflow-x:auto;position:static;padding-bottom:4px}nav#nav a{white-space:nowrap}.ng{display:none}}
 h1{font-size:22px;letter-spacing:-.02em;margin:0}
 h2{font-size:15px;margin:0 0 10px;letter-spacing:-.01em}
 .lead{color:var(--muted);margin:4px 0 0;max-width:70ch}
@@ -85,7 +86,7 @@ svg .ax{fill:var(--muted);font:11px var(--mono)}
 </style>
 <div class="wrap">
 <header class="top">
-<span class="brand">Compta Pilote</span>
+<span class="brand">Compta Pilote</span><select id="coSel" data-ext="co" aria-label="Entreprise" style="width:auto;max-width:240px;font-weight:500"></select>
 <input class="co" id="coName" aria-label="Nom de l'entreprise" data-bind="settings.name">
 <span class="spacer"></span>
 <span class="tag h">HT</span><span class="tag t">TTC</span>
@@ -132,7 +133,7 @@ const accName=a=>ACC[a]||catOf(a)?.n||(a.startsWith('28')?'Amortissements':a);
 const RATES=[20,10,5.5,2.1,0];
 
 /* état */
-function emptyState(){return{settings:{name:'Mon entreprise',year:new Date().getFullYear(),opening:0,tax:'is',dc:30,df:30,stock:0,days:220,tvaRegime:'mensuel',tvaBasis:'mixte',cashAlert:2000,first:''},entries:[],loans:[],equity:[],needs:[],sr:{ca:'',cv:'',cf:'',price:''},goal:{result:30000,basket:'',},demo:false,scen:{cur:'reel',list:{prudent:{ca:-15,delay:15},ambitieux:{ca:15,delay:0}}},rules:[],tpl:[],budget:null,closing:{},locked:{}}}
+function emptyState(){return{settings:{name:'Mon entreprise',year:new Date().getFullYear(),opening:0,tax:'is',dc:30,df:30,stock:0,days:220,tvaRegime:'mensuel',tvaBasis:'mixte',cashAlert:2000,first:''},entries:[],loans:[],equity:[],needs:[],sr:{ca:'',cv:'',cf:'',price:''},goal:{result:30000,basket:'',},demo:false,scen:{cur:'reel',list:{prudent:{ca:-15,delay:15},ambitieux:{ca:15,delay:0}}},rules:[],tpl:[],budget:null,closing:{},locked:{},profile:'gen',docs:[],tiers:[],legal:{raison:'',forme:'',siret:'',adresse:'',tva:'',iban:'',bic:'',email:''},fl:{statut:'sasu',tjm:550,conges:25,feries:8,nonfact:20,parts:1,remu:60},games:[],miles:[],team:[],catBudget:{}}}
 function demoState(){
 const s=emptyState();s.demo=true;s.settings.name='Mon entreprise (exemple)';s.settings.year=2026;s.settings.stock=20;s.settings.opening=0;s.goal.basket=180;s.sr.price=180;
 const add=(o)=>s.entries.push(Object.assign({id:uid(),delay:0,rate:20,dur:3,mode:'lin'},o));
@@ -160,7 +161,7 @@ s.needs.push({id:uid(),label:'Frais d\'établissement',ht:900,rate:20},{id:uid()
 s.entries.forEach(e=>{e.act={'706':'Services','611':'Services','707':'Boutique','607':'Boutique'}[e.cat]||''});
 return s}
 let S=emptyState(),tab=location.hash.slice(1)||'accueil',ui={sub:'saisie',kf:'all',dirty:false};
-const drafts={entry:{date:todayISO,kind:'vente',cat:'706',label:'',ht:'',rate:20,ttc:'',delay:0,dur:3,mode:'lin',rep:1},loan:{label:'',amount:'',rate:'',months:60,start:todayISO,deferred:0},eq:{label:'',type:'apport',amount:'',date:todayISO},need:{label:'',ht:'',rate:20}};
+const drafts={entry:{tiers:'',act:'',date:todayISO,kind:'vente',cat:'706',label:'',ht:'',rate:20,ttc:'',delay:0,dur:3,mode:'lin',rep:1},loan:{label:'',amount:'',rate:'',months:60,start:todayISO,deferred:0},eq:{label:'',type:'apport',amount:'',date:todayISO},need:{label:'',ht:'',rate:20}};
 
 /* calculs */
 function plan(e){const out={},n=Math.max(1,e.dur||1),[y0,m0]=dparts(e.date);let vnc=e.ht,rem=n*12,y=y0,first=true;
@@ -185,10 +186,10 @@ const needsTotal=()=>S.needs.reduce((a,n)=>padd(a,P(n.ht,n.ht*(1+n.rate/100))),P
 /* persistance : compte privé (db) sinon cet appareil */
 const KEY='compta-pilote-v1';let dbDoc=null,dl=null,saveT=null,saving=false;
 const setSave=t=>{$('#saveSt').textContent=t};
-function save(){ver++;if(RO){setSave('Lecture seule : non enregistré');return}ui.dirty=true;setSave('Enregistrement…');try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+function save(){ver++;if(RO){setSave('Lecture seule : non enregistré');return}ui.dirty=true;setSave('Enregistrement…');try{localStorage.setItem(KEY,JSON.stringify(W))}catch(e){}
 clearTimeout(saveT);saveT=setTimeout(flush,700)}
 async function flush(){if(!dbDoc){setSave('Enregistré sur cet appareil');return}if(saving){saveT=setTimeout(flush,400);return}saving=true;
-try{autoSnap();await dbDoc.set(await pack(S));setSave('Enregistré sur votre compte')}catch(e){setSave('Enregistré sur cet appareil')}saving=false}
+try{autoSnap();await dbDoc.set(await pack(W));setSave('Enregistré sur votre compte')}catch(e){setSave('Enregistré sur cet appareil')}saving=false}
 function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>t.hidden=true,2600)}
 
 /* briques d'affichage */
@@ -230,7 +231,7 @@ if(sub==='import')h+=viewImport();if(sub==='modeles')h+=viewTpl();if(sub==='jour
 if(sub==='balance')h+=viewBalance(y);
 if(sub==='resultat')h+=viewResultat(y);
 return h}
-function entryForm(d){const cats=CATS.filter(c=>c.k===d.kind).map(c=>[c.a,c.a+' · '+c.n]);const ed=d.editId;
+function entryForm(d){const cats=catsFor(d.kind).map(c=>[c.a,c.a+' · '+c.n]);const ed=d.editId;
 return `<div class="card"><h2>${ed?'Modifier la pièce':'Nouvelle pièce'}</h2><div class="row">
 ${fld('Date',`<input type="date" data-draft="date" value="${d.date}">`)}
 ${fld('Type',`<select data-dr="kind">${Object.entries(KINDS).map(([k,l])=>`<option value="${k}"${d.kind===k?' selected':''}>${l}</option>`).join('')}</select>`)}
@@ -244,16 +245,17 @@ ${fld('Montant TTC (€)',inp('ttc',d.ttc,'id="f-ttc" class="t"'))}
 ${fld('Règlement après',sel('delay',[0,15,30,45,60,90].map(x=>[x,x?x+' jours':'comptant']),d.delay))}
 ${d.kind==='immo'?fld('Durée (ans)',inp('dur',d.dur))+fld('Mode',sel('mode',[['lin','Linéaire'],['deg','Dégressif']],d.mode)):''}
 ${ed?'':fld('Répéter (mois)',inp('rep',d.rep))}
+${fld('Client ou fournisseur',`<input type="text" data-draft="tiers" list="tn" value="${esc(d.tiers||'')}"><datalist id="tn">${S.tiers.map(t=>`<option value="${esc(t.name)}">`).join('')}</datalist>`)}
 ${fld('Réglé le (facultatif)',`<input type="date" data-draft="paid" value="${d.paid||''}">`)}
 ${d.cat==='641'&&!ed?fld('Charges patronales auto (%)',inp('soc',d.soc||'')):''}
 ${ASSETS?fld('Pièce jointe',`<input type="file" id="f-att" data-ext="att">${d.att?`<a href="${esc(d.att.url)}" target="_blank" rel="noopener">${esc(d.att.name)}</a>`:''}`,'f2'):''}
 <div class="field" style="flex:0 0 auto"><label>&nbsp;</label><div style="display:flex;gap:6px"><button class="pri" data-act="add-entry">${ed?'Enregistrer':'Ajouter'}</button>${ed?'<button data-act="cancel-edit">Annuler</button>':''}</div></div>
 </div><p class="note">Saisissez le HT ou le TTC : l'autre montant se calcule. « Répéter » crée la même pièce chaque mois (utile pour un prévisionnel).</p></div>`}
-function entryList(y){const f=ui.kf;let L=S.entries.filter(e=>+e.date.slice(0,4)===y&&(f==='all'||e.kind===f)).sort((a,b)=>b.date.localeCompare(a.date));
+function entryList(y){const f=ui.kf;let L=S.entries.filter(e=>+e.date.slice(0,4)===y&&(f==='all'||e.kind===f)&&(!ui.q||(e.label+' '+e.cat+' '+(e.tiers||'')+' '+(e.act||'')).toLowerCase().includes(ui.q))).sort((a,b)=>b.date.localeCompare(a.date));
 const tot=L.reduce((a,e)=>padd(a,P(e.ht,tt(e))),P());
-return `<div class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Pièces de ${y} (${L.length})</h2><div class="sub">${[['all','Toutes'],...Object.entries(KINDS)].map(([k,l])=>`<button data-act="kf" data-v="${k}" class="${f===k?'on':''}">${l}</button>`).join('')}</div></div>
+return `<div class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Pièces de ${y} (${L.length})</h2><input type="text" id="q" data-ext="q" placeholder="Rechercher…" value="${esc(ui.q||'')}" style="max-width:220px"><div class="sub">${[['all','Toutes'],...Object.entries(KINDS)].map(([k,l])=>`<button data-act="kf" data-v="${k}" class="${f===k?'on':''}">${l}</button>`).join('')}</div></div>
 <div class="scroll"><table class="t" style="margin-top:8px"><thead><tr><th>Date</th><th class="l">Libellé</th><th class="l">Compte</th><th>HT</th><th>TVA</th><th>TTC</th><th>Règlement</th><th></th></tr></thead><tbody>
-${L.map(e=>`<tr><td class="l num">${fdate(e.date)}</td><td class="l">${esc(e.label)} <span class="chip">${KINDS[e.kind]}</span>${e.act?` <span class="chip">${esc(e.act)}</span>`:''}${e.att?` <a href="${esc(e.att.url)}" target="_blank" rel="noopener">PJ</a>`:''}</td><td class="l num">${e.cat}</td><td class="num" style="color:var(--ht)">${n2(e.ht)}</td><td class="num">${n2(e.ht*e.rate/100)} <span class="chip">${e.rate}%</span></td><td class="num" style="color:var(--ttc)">${n2(tt(e))}</td><td class="num">${e.paid?fdate(e.paid)+' <span class="chip good">réglé</span>':fdate(addDays(e.date,e.delay||0))}</td><td><button class="lnk" data-act="edit-entry" data-id="${e.id}">Modifier</button><button class="lnk danger" data-act="del-entry" data-id="${e.id}">Suppr.</button></td></tr>`).join('')||'<tr><td colspan="8" class="l" style="color:var(--muted)">Aucune pièce pour cet exercice. Ajoutez votre première ci-dessus.</td></tr>'}
+${L.map(e=>`<tr><td class="l num">${fdate(e.date)}</td><td class="l">${esc(e.label)} <span class="chip">${KINDS[e.kind]}</span>${e.tiers?` <span class="chip">${esc(e.tiers)}</span>`:''}${e.act?` <span class="chip">${esc(e.act)}</span>`:''}${e.att?` <a href="${esc(e.att.url)}" target="_blank" rel="noopener">PJ</a>`:''}</td><td class="l num">${e.cat}</td><td class="num" style="color:var(--ht)">${n2(e.ht)}</td><td class="num">${n2(e.ht*e.rate/100)} <span class="chip">${e.rate}%</span></td><td class="num" style="color:var(--ttc)">${n2(tt(e))}</td><td class="num">${e.paid?fdate(e.paid)+' <span class="chip good">réglé</span>':fdate(addDays(e.date,e.delay||0))}</td><td><button class="lnk" data-act="edit-entry" data-id="${e.id}">Modifier</button><button class="lnk danger" data-act="del-entry" data-id="${e.id}">Suppr.</button></td></tr>`).join('')||'<tr><td colspan="8" class="l" style="color:var(--muted)">Aucune pièce pour cet exercice. Ajoutez votre première ci-dessus.</td></tr>'}
 </tbody><tfoot><tr class="strong"><td class="l" colspan="3">Total affiché</td><td class="num" style="color:var(--ht)">${n2(tot.h)}</td><td class="num">${n2(tot.t-tot.h)}</td><td class="num" style="color:var(--ttc)">${n2(tot.t)}</td><td colspan="2"></td></tr></tfoot></table></div></div>`}
 function viewJournal(y){const L=journal(y),D=sum(L.map(l=>l.d)),C=sum(L.map(l=>l.c));
 return `<div class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Journal ${y} (généré automatiquement)</h2><button data-act="export-journal">Exporter en CSV</button></div>
@@ -387,16 +389,10 @@ h+=`<div class="card"><h2>Ventes saisies face à l'objectif ${y}</h2><div class=
 h+=objAct(Q);return h}
 
 /* ===== NAVIGATION ET ÉVÉNEMENTS ===== */
-const TABS=[['accueil','Accueil',viewAccueil],['compta','Comptabilité auto',viewCompta],['rapprochement','Rapprochement',viewRapp],['seuil','Seuil de rentabilité',viewSR],['tresorerie','Trésorerie',viewTre],['financement','Plan de financement',viewFin],['amortissement','Amortissements',viewAmo],['caf','CAF',viewCaf],['besoins','Besoins',viewBes],['objectif','Objectif de vente',viewObj],['previsionnel','Prévu et réalisé',viewPrev],['scenarios','Scénarios',viewScen],['cloture','Clôture et contrôles',viewClo],['parametres','Paramètres',viewPar]];
-function render(){if(!TABS.find(t=>t[0]===tab))tab='accueil';const ys=[];for(let y=2024;y<=2034;y++)ys.push(y);
-$('#yearSel').innerHTML=ys.map(y=>`<option${y===S.settings.year?' selected':''}>${y}</option>`).join('');$('#coName').value=S.settings.name;$('#scenSel').innerHTML=[['reel','Scénario : réel'],...Object.keys(S.scen.list).map(k=>[k,'Scénario : '+k])].map(([k,l])=>`<option value="${esc(k)}"${k===S.scen.cur?' selected':''}>${esc(l)}</option>`).join('');
-$('#nav').innerHTML=TABS.map(([k,l])=>`<a href="#${k}" class="${k===tab?'on':''}">${l}</a>`).join('');
-try{$('#view').innerHTML=TABS.find(t=>t[0]===tab)[2]()}catch(e){$('#view').innerHTML='<div class="card">Une erreur est survenue dans ce module : '+esc(e.message)+'</div>';console.error(e)}}
-window.addEventListener('hashchange',()=>{tab=location.hash.slice(1)||'accueil';render();scrollTo(0,0)});
 const setPath=(o,p,v)=>{const k=p.split('.');let x=o;k.slice(0,-1).forEach(a=>x=x[a]);x[k.at(-1)]=v};
 document.addEventListener('change',e=>{const t=e.target;
 if(t.dataset.bind){let v=t.value;if(t.dataset.num)v=v.trim()===''?'':num(v);setPath(S,t.dataset.bind,v);save();render();return}
-if(t.dataset.dr){const d=drafts.entry;d[t.dataset.dr]=t.value;if(t.dataset.dr==='kind'){const c=CATS.find(x=>x.k===d.kind);d.cat=c.a;d.rate=c.r;d.dur=c.dur||3}
+if(t.dataset.dr){const d=drafts.entry;d[t.dataset.dr]=t.value;if(t.dataset.dr==='kind'){const c=catsFor(d.kind)[0];d.cat=c.a;d.rate=c.r;d.dur=c.dur||3}
 if(t.dataset.dr==='cat'){const c=catOf(d.cat);d.rate=c.r;if(c.dur)d.dur=c.dur}
 if(d.ht!=='')d.ttc=r2(num(d.ht)*(1+num(d.rate)/100));render()}});
 document.addEventListener('input',e=>{const t=e.target,p=t.dataset.draft;if(!p)return;const [o,k]=p.includes('.')?p.split('.'):['entry',p];drafts[o][k]=t.value;
@@ -412,7 +408,7 @@ if(a==='sub'){ui.sub=b.dataset.v}
 else if(a==='kf'){ui.kf=b.dataset.v}
 else if(a==='add-entry'){const d=drafts.entry,ht=num(d.ht,NaN);if(!d.date||isNaN(ht)||!d.label.trim()){toast('Renseignez la date, le libellé et un montant.');return}
 if(S.locked[+d.date.slice(0,4)]){toast('Exercice clôturé : déverrouillez-le dans Clôture et contrôles.');return}
-const base={date:d.date,label:d.label.trim(),kind:d.kind,cat:d.cat,ht,rate:num(d.rate),delay:num(d.delay),dur:Math.max(1,num(d.dur,3)),mode:d.mode,act:(d.act||'').trim(),att:d.att||null};if(d.paid)base.paid=d.paid;
+const base={date:d.date,label:d.label.trim(),kind:d.kind,cat:d.cat,ht,rate:num(d.rate),delay:num(d.delay),dur:Math.max(1,num(d.dur,3)),mode:d.mode,act:(d.act||'').trim(),att:d.att||null,tiers:(d.tiers||'').trim()};if(d.paid)base.paid=d.paid;
 if(d.editId){const i=S.entries.findIndex(x=>x.id===d.editId);if(i>=0)S.entries[i]={...base,id:d.editId}}
 else{const n=Math.max(1,Math.min(60,parseInt(d.rep)||1));const soc=d.cat==='641'?num(d.soc):0;for(let i=0;i<n;i++){const dt=addMonths(d.date,i);S.entries.push({...base,id:uid(),date:dt,paid:undefined});if(soc>0)S.entries.push({...base,id:uid(),date:dt,cat:'645',rate:0,ht:r2(ht*soc/100),label:'Charges patronales – '+base.label,att:null,paid:undefined})}}
 Object.assign(d,{label:'',ht:'',ttc:'',rep:1,editId:null,att:null,paid:'',soc:''});toast('Pièce enregistrée.')}
@@ -425,10 +421,10 @@ else if(a==='add-eq'){const d=drafts.eq,am=num(d.amount);if(!d.label.trim()||am<
 else if(a==='del-eq')rm('equity');
 else if(a==='add-need'){const d=drafts.need,h=num(d.ht,NaN);if(!d.label.trim()||isNaN(h)){toast('Renseignez le libellé et le montant HT.');return}S.needs.push({id:uid(),label:d.label.trim(),ht:h,rate:num(d.rate)});Object.assign(d,{label:'',ht:''})}
 else if(a==='del-need')rm('needs');
-else if(a==='clear-demo'){snapshot('Avant effacement des exemples');const s=emptyState();s.settings.year=new Date().getFullYear();s.settings.name='Mon entreprise';S=s}
-else if(a==='load-demo'){snapshot('Avant rechargement des exemples');S=demoState()}
-else if(a==='reset'){if(!b.dataset.ok){b.dataset.ok=1;b.textContent='Confirmer : tout effacer';return}snapshot('Avant effacement total');const s=emptyState();S=s}
-else if(a==='export-json'){download('compta-pilote-sauvegarde.json',JSON.stringify(S,null,2));return}
+else if(a==='clear-demo'){snapshot('Avant effacement des exemples');setS(emptyState())}
+else if(a==='load-demo'){snapshot('Avant rechargement des exemples');setS(S.profile==='game'?demoGame():S.profile==='ux'?demoUX():demoState())}
+else if(a==='reset'){if(!b.dataset.ok){b.dataset.ok=1;b.textContent='Confirmer : tout effacer';return}snapshot('Avant effacement total');setS(emptyState())}
+else if(a==='export-json'){download('compta-pilote-sauvegarde.json',JSON.stringify(W,null,2));return}
 else if(a==='export-journal'){const y=S.settings.year,L=journal(y);download('journal-'+y+'.csv','﻿'+'Date;Journal;Compte;Intitulé;Libellé;Débit;Crédit\n'+L.map(l=>[l.date,l.j,l.a,accName(l.a),'"'+l.label.replace(/"/g,'""')+'"',n2(l.d),n2(l.c)].join(';')).join('\n'));return}
 else if(EXT[a]){if(EXT[a](b)===false)return}
 else return;
@@ -444,7 +440,7 @@ function E(){const sc=scenName(),p=S.scen.list[sc],k=ver+'|'+sc+'|'+S.entries.le
 ecache=!p?S.entries:S.entries.map(e=>e.kind==='vente'?{...e,ht:e.ht*(1+p.ca/100),delay:(e.delay||0)+(p.delay||0)}:e.kind==='varia'?{...e,ht:e.ht*(1+p.ca/100)}:e);ekey=k;return ecache}
 const withScen=(n,f)=>{const o=SC;SC=n;try{return f()}finally{SC=o}};
 const minYear=()=>S.entries.length?Math.min(...S.entries.map(e=>+e.date.slice(0,4))):S.settings.year;
-const actNames=()=>[...new Set(S.entries.map(e=>e.act).filter(Boolean))];
+const actNames=()=>[...new Set([...S.entries.map(e=>e.act),...(S.games||[]).map(g=>g.name)].filter(Boolean))];
 function supBase(y){let p=P();E().forEach(e=>{if(+e.date.slice(0,4)===y&&(e.kind==='varia'||(e.kind==='fixe'&&!NOSUP.includes(e.cat))))p=padd(p,P(e.ht,tt(e)))});return p}
 const cashDate=e=>e.paid||addDays(e.date,e.delay||0);
 
@@ -472,12 +468,12 @@ function openingFor(y){const st=S.settings,first=+st.first||minYear();let bal=P(
 for(let yy=first;yy<y;yy++){const T=treasury(yy,bal);bal=P(T.bH[11],T.bT[11])}return bal}
 
 /* historique et sauvegardes */
-async function snapshot(reason){const data=JSON.stringify(S),ts=Date.now();lastSnap=ts;
-try{if(DB){await DB.collection('history').doc(String(ts)).set(Object.assign({ts,reason},await pack(S)));const l=await DB.collection('history').orderBy('ts','desc').limit(40).get();for(const d of l.docs.slice(20))await DB.collection('history').doc(d.id).delete()}
+async function snapshot(reason){const data=JSON.stringify(W),ts=Date.now();lastSnap=ts;
+try{if(DB){await DB.collection('history').doc(String(ts)).set(Object.assign({ts,reason},await pack(W)));const l=await DB.collection('history').orderBy('ts','desc').limit(40).get();for(const d of l.docs.slice(20))await DB.collection('history').doc(d.id).delete()}
 else{const h=JSON.parse(localStorage.getItem('compta-pilote-hist')||'[]');h.unshift({ts,reason,data});localStorage.setItem('compta-pilote-hist',JSON.stringify(h.slice(0,3)))}}catch(e){}}
 function autoSnap(){if(!RO&&Date.now()-lastSnap>12*3600*1000)snapshot('Automatique')}
 async function loadHist(){try{if(DB){const l=await DB.collection('history').orderBy('ts','desc').limit(20).get();ui.hist=l.docs.map(d=>d.data())}else ui.hist=JSON.parse(localStorage.getItem('compta-pilote-hist')||'[]')}catch(e){ui.hist=[]}}
-const norm=s=>{const e=emptyState();return Object.assign(e,s,{settings:Object.assign(e.settings,s.settings||{}),scen:Object.assign(e.scen,s.scen||{}),closing:s.closing||{},locked:s.locked||{}})};
+const norm=s=>{const e=emptyState();return Object.assign(e,s,{settings:Object.assign(e.settings,s.settings||{}),scen:Object.assign(e.scen,s.scen||{}),closing:s.closing||{},locked:s.locked||{},legal:Object.assign(e.legal,s.legal||{}),fl:Object.assign(e.fl,s.fl||{}),catBudget:s.catBudget||{},docs:s.docs||[],tiers:s.tiers||[],games:s.games||[],miles:s.miles||[],team:s.team||[],rules:s.rules||[],tpl:s.tpl||[]})};
 
 /* bibliothèques d'export */
 const libs={};const loadLib=u=>libs[u]||(libs[u]=new Promise((ok,ko)=>{const s=document.createElement('script');s.src=u;s.onload=ok;s.onerror=()=>ko(new Error('Chargement impossible'));document.head.appendChild(s)}));
@@ -532,7 +528,7 @@ const s=yearStats(y),ds=s.loan.cap+s.loan.int;if(ds>0&&s.caf.h/ds<1.2)A.push({l:
 const up=unpaid().filter(x=>x.late>0);if(up.length)A.push({l:'warn',m:up.length+' pièce(s) échue(s) non rapprochées. Voir l\'onglet Rapprochement.'});
 const er=checks().filter(x=>x.l==='err');if(er.length)A.push({l:'bad',m:er.length+' erreur(s) de cohérence à corriger (Clôture et contrôles).'});
 if(now.getFullYear()===y){const c=srCalc();if(c.tm>0){const R=num(S.goal.result),req=(c.cfH+R)/c.tm,el=(now-new Date(y,0,1))/(365*864e5);let real=0;S.entries.forEach(e=>{if(e.kind==='vente'&&+e.date.slice(0,4)===y&&e.date<=todayISO)real+=e.ht});if(req>0&&real<0.9*req*el)A.push({l:'warn',m:'Objectif de vente en retard : '+e0(real)+' HT réalisés pour '+e0(req*el)+' attendus à ce jour.'})}}
-return A}
+profileAlerts(A);return A}
 
 /* indicateurs bancaires */
 function loanRest(y){let d=0;S.loans.forEach(l=>{if(+l.start.slice(0,4)>y)return;const r=sched(l).filter(x=>+x.date.slice(0,4)<=y);d+=r.length?r[r.length-1].rest:l.amount});return d}
@@ -560,17 +556,17 @@ if(RO)h+='<div class="banner">Lecture seule : vous consultez cette comptabilité
 h+=`<div class="grid">${kpi('Chiffre d\'affaires',s.ca)}${kpi('Résultat net',s.rn)}${kpi('CAF',s.caf)}${kpi('Trésorerie fin d\'année',P(T.bH[11],T.bT[11]),'Point bas : '+e0(mn)+' TTC')}${kpi('Seuil de rentabilité',c.SRp,c.tm>0&&s.ca.h>0?(s.ca.h>=c.SR?'<span class="chip good">Seuil dépassé</span>':'<span class="chip warn">Seuil non atteint</span>'):'')}${kpi('Objectif de vente',P(req,req*c.kv),req>0?n0(pct)+' % réalisé':'')}</div>`;
 h+=`<div class="two"><div class="card"><h2>Alertes (${A.length})</h2>${A.length?A.map(a=>`<p style="margin:0 0 8px"><span class="chip ${a.l}">${a.l==='bad'?'Urgent':'À surveiller'}</span> ${esc(a.m)}</p>`).join(''):'<p style="margin:0"><span class="chip good">Tout est en ordre</span></p>'}</div>
 <div class="card"><h2>Trésorerie ${y}</h2><div class="legend"><span><b style="background:var(--ht)"></b>HT</span><span><b style="background:var(--ttc)"></b>TTC</span></div>${lineChart([{v:T.bH,c:'var(--ht)'},{v:T.bT,c:'var(--ttc)'}],MONTHS)}</div></div>`;
-h+=bankCard(y)+`<div class="card"><h2>Accès rapides</h2><div class="sub">${[['compta','Saisir une pièce'],['rapprochement','Rapprocher'],['tresorerie','Trésorerie'],['scenarios','Scénarios'],['cloture','Contrôles']].map(([k,l])=>`<a href="#${k}"><button>${l}</button></a>`).join('')}</div></div>`;
+h+=profileCard()+bankCard(y)+`<div class="card"><h2>Accès rapides</h2><div class="sub">${[['compta','Saisir une pièce'],['rapprochement','Rapprocher'],['tresorerie','Trésorerie'],['scenarios','Scénarios'],['cloture','Contrôles']].map(([k,l])=>`<a href="#${k}"><button>${l}</button></a>`).join('')}</div></div>`;
 return h}
 function bankCard(y){const b=bankInd(y),ch=(v,ok,t)=>v==null?'<span class="chip">n.c.</span>':`<span class="chip ${ok?'good':'warn'}">${t}</span>`;
 return `<div class="card"><h2>Indicateurs pour votre banquier ${y}</h2><div class="grid">${kpi('CAF',b.s.caf)}${kpi('Service de la dette (capital + intérêts)',P(b.ds,b.ds))}${kpi('Dettes financières fin d\'année',P(b.debt,b.debt))}${kpi('Capitaux propres estimés',P(b.cap,b.cap),'Apports + résultats cumulés')}</div>
-<table class="t" style="margin-top:12px"><thead><tr><th class="l">Ratio</th><th>Valeur</th><th>Lecture</th></tr></thead><tbody>
+<div class="scroll"><table class="t" style="margin-top:12px"><thead><tr><th class="l">Ratio</th><th>Valeur</th><th>Lecture</th></tr></thead><tbody>
 <tr><td class="l">Couverture de la dette (CAF ÷ service de la dette)</td><td class="num">${b.dscr==null?'-':n2(b.dscr)}</td><td>${ch(b.dscr,b.dscr>=1.2,'visez au moins 1,2')}</td></tr>
 <tr><td class="l">Endettement (dettes ÷ capitaux propres)</td><td class="num">${b.gear==null?'-':n2(b.gear)}</td><td>${ch(b.gear,b.gear<=1,'idéalement sous 1')}</td></tr>
 <tr><td class="l">Capacité de remboursement (dettes ÷ CAF, en années)</td><td class="num">${b.pay==null?'-':n2(b.pay)}</td><td>${ch(b.pay,b.pay<=4,'idéalement sous 4 ans')}</td></tr>
 <tr><td class="l">Marge nette (résultat ÷ CA)</td><td class="num">${b.mn==null?'-':n2(b.mn*100)+' %'}</td><td>${ch(b.mn,b.mn>=0.05,'visez au moins 5 %')}</td></tr>
 <tr><td class="l">Taux d'EBE (EBE ÷ CA)</td><td class="num">${b.ebe==null?'-':n2(b.ebe*100)+' %'}</td><td>${ch(b.ebe,b.ebe>=0.1,'visez au moins 10 %')}</td></tr>
-<tr><td class="l">Point mort mensuel${tags}</td><td>${dual(pmul(b.sr,1/12))}</td><td></td></tr></tbody></table></div>`}
+<tr><td class="l">Point mort mensuel${tags}</td><td>${dual(pmul(b.sr,1/12))}</td><td></td></tr></tbody></table></div></div>`}
 
 /* ===== RAPPROCHEMENT ===== */
 function viewRapp(){const U=unpaid(),cl=U.filter(x=>x.e.kind==='vente'),fo=U.filter(x=>x.e.kind!=='vente');
@@ -608,7 +604,7 @@ function viewImport(){let h=`<div class="card"><h2>Importer un relevé bancaire 
 <div class="field" style="margin-top:10px"><label>Ou collez le contenu</label><textarea id="imp-text" data-ext="imp-text" rows="5" style="width:100%;font:12px var(--mono);background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px" placeholder="Date;Libellé;Montant&#10;12/11/2026;PRLV EDF;-84,50">${esc(ui.impText)}</textarea></div>
 <div class="row" style="margin-top:10px"><button class="pri" data-act="imp-parse">Analyser</button></div></div>`;
 if(ui.imp===null)h+='<div class="card">Colonnes non reconnues. Il faut au minimum une colonne date, une colonne libellé et une colonne montant (ou débit et crédit).</div>';
-else if(ui.imp.length){const co=CATS.filter(c=>c.k!=='immo').map(c=>[c.a,c.a+' · '+c.n]);
+else if(ui.imp.length){const co=CATS.filter(c=>c.k!=='immo'&&(!c.p||c.p===S.profile)).map(c=>[c.a,c.a+' · '+c.n]);
 h+=`<div class="card"><h2>${ui.imp.length} ligne(s) à vérifier</h2><div class="scroll"><table class="t"><thead><tr><th class="l">Importer</th><th class="l">Date</th><th class="l">Libellé</th><th>TTC</th><th class="l">Catégorie</th><th class="l">TVA</th><th>HT</th><th class="l">Mémoriser (mot-clé)</th></tr></thead><tbody>${ui.imp.map((r,i)=>{const ct=catOf(r.cat),ht=Math.abs(r.amt)/(1+r.rate/100);return `<tr><td class="l"><input type="checkbox" data-ext="imp" data-i="${i}" data-f="on"${r.on?' checked':''}> ${r.dup?'<span class="chip warn">doublon ?</span>':''}${r.auto?'<span class="chip good">règle</span>':''}</td><td class="l num">${fdate(r.date)}</td><td class="l">${esc(r.label)}</td><td class="num" style="color:var(--ttc)">${n2(r.amt)}</td><td class="l"><select data-ext="imp" data-i="${i}" data-f="cat" style="min-width:200px">${co.map(([k,l])=>`<option value="${k}"${k===r.cat?' selected':''}>${esc(l)}</option>`).join('')}</select></td><td class="l"><select data-ext="imp" data-i="${i}" data-f="rate" style="width:84px">${RATES.map(x=>`<option value="${x}"${x===r.rate?' selected':''}>${x} %</option>`).join('')}</select></td><td class="num" style="color:var(--ht)">${n2(ht)}</td><td class="l"><input type="text" data-ext="imp" data-i="${i}" data-f="kw" value="${esc(r.kw)}" placeholder="ex. edf" style="width:110px"></td></tr>`}).join('')}</tbody></table></div>
 <div class="row" style="margin-top:12px"><button class="pri" data-act="imp-do">Importer les lignes cochées</button></div></div>`}
 if(S.rules.length)h+=`<div class="card"><h2>Règles de catégorisation (${S.rules.length})</h2>${S.rules.map((r,i)=>`<div class="row" style="justify-content:space-between;align-items:center;margin-top:6px"><span>Libellé contenant <b>« ${esc(r.kw)} »</b> : ${r.cat} · ${esc(catOf(r.cat)?.n||'')}, TVA ${r.rate} %</span><button class="lnk danger" data-act="del-rule" data-i="${i}">Suppr.</button></div>`).join('')}</div>`;
@@ -621,7 +617,7 @@ EXT['del-rule']=b=>{S.rules.splice(+b.dataset.i,1)};
 
 /* ===== MODÈLES RÉCURRENTS ===== */
 drafts.tpl={label:'',kind:'fixe',cat:'613',ht:'',rate:20,delay:0,start:todayISO,months:12,act:''};
-function viewTpl(){const d=drafts.tpl,cats=CATS.filter(c=>c.k===d.kind).map(c=>[c.a,c.a+' · '+c.n]);
+function viewTpl(){const d=drafts.tpl,cats=catsFor(d.kind).map(c=>[c.a,c.a+' · '+c.n]);
 return `<div class="card"><h2>Nouveau modèle mensuel</h2><div class="row">${fld('Libellé',inp('tpl.label',d.label,'placeholder="Loyer, abonnement…"'),'f2')}${fld('Type',`<select data-dr2="tpl.kind">${Object.entries(KINDS).filter(k=>k[0]!=='immo').map(([k,l])=>`<option value="${k}"${d.kind===k?' selected':''}>${l}</option>`).join('')}</select>`)}${fld('Catégorie',sel('tpl.cat',cats,d.cat),'f2')}${fld('Montant HT (€)',inp('tpl.ht',d.ht))}${fld('TVA',sel('tpl.rate',rateOpts,d.rate))}${fld('Règlement après',sel('tpl.delay',[0,15,30,45,60].map(x=>[x,x?x+' jours':'comptant']),d.delay))}${fld('Premier mois',`<input type="date" data-draft="tpl.start" value="${d.start}">`)}${fld('Nombre de mois',inp('tpl.months',d.months))}${fld('Activité',inp('tpl.act',d.act))}<button class="pri" data-act="add-tpl">Ajouter et générer</button></div>
 <p class="note">Le modèle crée une pièce par mois. Vous pouvez ensuite le prolonger sans créer de doublon.</p></div>
 <div class="card"><h2>Modèles (${S.tpl.length})</h2>${S.tpl.map(t=>`<div class="row" style="justify-content:space-between;align-items:center;margin-top:8px"><span>${esc(t.label)} · ${n2(t.ht)} € HT (${n2(t.ht*(1+t.rate/100))} € TTC) · depuis ${fdate(t.start)}</span><span><button class="lnk" data-act="ext-tpl" data-id="${t.id}">Prolonger de 12 mois</button><button class="lnk danger" data-act="del-tpl" data-id="${t.id}">Suppr.</button></span></div>`).join('')||'<p style="margin:0;color:var(--muted)">Aucun modèle.</p>'}</div>`}
@@ -636,12 +632,12 @@ function monthly(y,ents){const o={ca:[],cv:[],cf:[]};for(let i=0;i<12;i++){o.ca.
 ents.forEach(e=>{if(+e.date.slice(0,4)!==y)return;const i=dparts(e.date)[1]-1,k={vente:'ca',varia:'cv',fixe:'cf'}[e.kind];if(k)o[k][i]=padd(o[k][i],P(e.ht,tt(e)))});return o}
 function viewPrev(){const y=S.settings.year,B=S.budget;let h=head('Prévu et réalisé','Figez votre prévisionnel, puis mettez vos pièces à jour avec la réalité : l\'écart apparaît mois par mois.');
 h+=`<div class="card"><div class="row" style="align-items:center"><button class="pri" data-act="freeze">${B?'Refiger le prévisionnel avec les pièces actuelles':'Figer le prévisionnel '+y}</button>${B?'<button class="danger" data-act="unfreeze">Supprimer le prévisionnel figé</button>':''}</div><p class="note">${B?'Prévisionnel figé de '+B.y+' le '+fdate(B.date)+'.':'Aucun prévisionnel figé. Saisissez d\'abord vos pièces prévues, puis figez-les.'}</p></div>`;
-if(!B)return h;const A=monthly(B.y,S.entries),Bd=B.m,cur=new Date().getFullYear()===B.y?new Date().getMonth():11;
+if(!B)return h+catBudgetCard(y);const A=monthly(B.y,S.entries),Bd=B.m,cur=new Date().getFullYear()===B.y?new Date().getMonth():11;
 const res=(m,i)=>psub(psub(m.ca[i],m.cv[i]),m.cf[i]);
 const row=(l,k,sg)=>{const tot=(m)=>m[k].reduce((a,p)=>padd(a,p),P());return `<tr><td class="l">${l}${tags}</td>${MONTHS.map((_,i)=>`<td>${dual(sg?res(Bd,i):Bd[k][i])}</td>`).join('')}<td>${dual(sg?Bd.ca.reduce((a,p,i)=>padd(a,res(Bd,i)),P()):tot(Bd))}</td></tr>`};
 const mk=(l,k)=>{const f=(m,i)=>k==='res'?res(m,i):m[k][i],sm=m=>MONTHS.reduce((a,_,i)=>padd(a,f(m,i)),P());
 return `<tr class="strong"><td class="l" colspan="14">${l}</td></tr><tr><td class="l">Prévu${tags}</td>${MONTHS.map((_,i)=>`<td>${dual(f(Bd,i))}</td>`).join('')}<td>${dual(sm(Bd))}</td></tr><tr><td class="l">Réalisé${tags}</td>${MONTHS.map((_,i)=>`<td>${dual(f(A,i))}</td>`).join('')}<td>${dual(sm(A))}</td></tr><tr><td class="l">Écart${tags}</td>${MONTHS.map((_,i)=>{const d=psub(f(A,i),f(Bd,i));return `<td class="${(k==='cv'||k==='cf'?d.h>0:d.h<0)&&i<=cur?'neg':''}">${dual(d)}</td>`}).join('')}<td>${dual(psub(sm(A),sm(Bd)))}</td></tr>`};
-h+=`<div class="card"><div class="scroll"><table class="t wide"><thead><tr><th class="l">Montants en € (date de facture)</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total</th></tr></thead><tbody>${mk('Chiffre d\'affaires','ca')}${mk('Charges variables','cv')}${mk('Charges fixes','cf')}${mk('Résultat d\'exploitation avant amortissements','res')}</tbody></table></div><p class="note">Une case rouge signale un écart défavorable sur un mois échu : moins de ventes ou plus de charges que prévu.</p></div>`;return h}
+h+=`<div class="card"><div class="scroll"><table class="t wide"><thead><tr><th class="l">Montants en € (date de facture)</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total</th></tr></thead><tbody>${mk('Chiffre d\'affaires','ca')}${mk('Charges variables','cv')}${mk('Charges fixes','cf')}${mk('Résultat d\'exploitation avant amortissements','res')}</tbody></table></div><p class="note">Une case rouge signale un écart défavorable sur un mois échu : moins de ventes ou plus de charges que prévu.</p></div>`;h+=catBudgetCard(y);return h}
 EXT['freeze']=()=>{const y=S.settings.year;S.budget={y,date:todayISO,m:monthly(y,S.entries)};toast('Prévisionnel figé.')};
 EXT['unfreeze']=()=>{S.budget=null};
 
@@ -667,7 +663,7 @@ return h}
 EXT['lock-year']=b=>{const k=+b.dataset.y;if(!S.locked[k])snapshot('Clôture '+k);S.locked[k]=!S.locked[k]};
 
 /* ===== PARAMÈTRES ===== */
-function viewPar(){const st=S.settings;if(!ui.hist&&!ui.histLoading){ui.histLoading=true;loadHist().then(()=>{ui.histLoading=false;if(tab==='parametres')render()})}
+function viewParBase(){const st=S.settings;if(!ui.hist&&!ui.histLoading){ui.histLoading=true;loadHist().then(()=>{ui.histLoading=false;if(tab==='parametres')render()})}
 const o=(v,a)=>a.map(([k,l])=>`<option value="${k}"${String(v)===k?' selected':''}>${l}</option>`).join('');
 return head('Paramètres','Régime fiscal, alertes, sauvegardes et exports.')+`<div class="card"><h2>Fiscalité</h2><div class="row">${fld('Régime de TVA',`<select data-bind="settings.tvaRegime">${o(st.tvaRegime,[['mensuel','Réel normal, déclaration mensuelle'],['trimestriel','Réel simplifié, déclaration trimestrielle'],['franchise','Franchise en base (pas de TVA)']])}</select>`,'f2')}${fld('TVA collectée sur les ventes',`<select data-bind="settings.tvaBasis">${o(st.tvaBasis,[['mixte','Marchandises : débits. Services : encaissements'],['deb','Tout sur les débits (à la facture)'],['enc','Tout sur les encaissements']])}</select>`,'f2')}${fld('Imposition',`<select data-bind="settings.tax">${o(st.tax,[['is','Impôt sur les sociétés (15 % / 25 %)'],['ir','Impôt sur le revenu (pas d\'IS)']])}</select>`,'f2')}</div></div>
 <div class="card"><h2>Trésorerie et alertes</h2><div class="row">${fld('Trésorerie de départ (€), au 1er janvier de la première année',bindIn('settings.opening',st.opening))}${fld('Première année suivie',bindIn('settings.first',st.first,String(minYear())))}${fld('Alerte si trésorerie sous (€ TTC)',bindIn('settings.cashAlert',st.cashAlert))}</div><p class="note">Les années suivantes reprennent automatiquement le solde de l'année précédente.</p></div>
@@ -676,14 +672,313 @@ return head('Paramètres','Régime fiscal, alertes, sauvegardes et exports.')+`<
 <div class="card"><h2>Partage avec votre comptable</h2><p style="margin:0">Utilisez le menu Partager de la page pour inviter votre expert-comptable. Selon le niveau d'accès, il consulte en lecture seule ou modifie avec vous. Un lecteur voit vos chiffres en direct, sans pouvoir les changer.</p></div>
 <div class="card"><h2>Données</h2><div class="row"><button data-act="load-demo">Recharger les données d'exemple</button><button class="danger" data-act="reset">Tout effacer</button></div></div>`}
 EXT['snap-now']=()=>{snapshot('Manuel').then(()=>loadHist()).then(()=>render());toast('Point de sauvegarde créé.');return false};
-EXT['restore']=b=>{const h=ui.hist[+b.dataset.i];if(!h)return false;snapshot('Avant restauration');unpack(h).then(o=>{S=norm(o);save();render();toast('Version restaurée.')});return false};
+EXT['restore']=b=>{const h=ui.hist[+b.dataset.i];if(!h)return false;snapshot('Avant restauration');unpack(h).then(o=>{setW(normW(o));save();render();toast('Version restaurée.')});return false};
+/* ===== MULTI-ENTREPRISES ===== */
+let W={v:3,active:'',companies:[]};
+const curCo=()=>W.companies.find(c=>c.id===W.active)||W.companies[0];
+const catsFor=k=>CATS.filter(c=>c.k===k&&(!c.p||c.p===S.profile));
+const PROFILES={ux:'Freelance UI / UX',game:'Studio de jeux vidéo',gen:'Autre activité'};
+const saleCat=()=>S.profile==='ux'?'7062':S.profile==='game'?'7066':'706';
+function emptyFor(profile,name){const e=emptyState();e.profile=profile;e.settings.name=name;e.settings.year=new Date().getFullYear();return e}
+function setW(w){W=w;if(!W.companies.find(c=>c.id===W.active))W.active=W.companies[0].id;S=curCo().data;ver++}
+function setS(s){s.profile=S.profile;s.settings.name=S.settings.name.replace(' (exemple)','');curCo().data=s;S=s;ver++}
+function withCo(c,f){const o=S;S=c.data;ver++;try{return f()}finally{S=o;ver++}}
+function switchCo(id){W.active=id;S=curCo().data;ver++;ui.sub='saisie';ui.kf='all';ui.q='';Object.assign(drafts.entry,{kind:'vente',cat:saleCat(),rate:20,label:'',ht:'',ttc:'',editId:null,att:null});drafts.doc.lines=[{d:'',q:1,u:S.profile==='ux'?'jour':'unité',pu:'',rate:S.settings.tvaRegime==='franchise'?0:20}];save();render()}
+function demoW(){const a={id:uid(),data:demoUX()},b={id:uid(),data:demoGame()};return{v:3,active:a.id,companies:[a,b]}}
+function normW(o){if(o&&o.companies){o.companies.forEach(c=>{c.data=norm(c.data)});return o}
+const d=norm(o);if(d.demo)return demoW();d.profile=d.profile==='gen'?'ux':d.profile;const a={id:uid(),data:d};return{v:3,active:a.id,companies:[a,{id:uid(),data:emptyFor('game','Studio de jeux vidéo')}]}}
+
+/* catégories métier */
+CATS.push(
+{a:'7062',n:'Missions UI/UX en régie (TJM)',k:'vente',r:20,p:'ux'},{a:'7063',n:'Projets de design au forfait',k:'vente',r:20,p:'ux'},{a:'7064',n:'Ateliers, audits et formations',k:'vente',r:20,p:'ux'},{a:'7068',n:'Vente de templates et kits UI',k:'vente',r:20,p:'ux'},
+{a:'6045',n:'Sous-traitance (illustration, développement)',k:'varia',r:20,p:'ux'},
+{a:'6511',n:'Logiciels et abonnements (Figma, Adobe…)',k:'fixe',r:20,p:'ux'},{a:'6135',n:'Coworking et bureau',k:'fixe',r:20,p:'ux'},{a:'6333',n:'Formation continue',k:'fixe',r:0,p:'ux'},{a:'6236',n:'Prospection et réseau',k:'fixe',r:20,p:'ux'},
+{a:'7066',n:'Prestations de développement pour tiers',k:'vente',r:20,p:'game'},{a:'7065',n:'Jalons éditeur (milestones)',k:'vente',r:20,p:'game'},{a:'7071',n:'Ventes jeux : PC (Steam, Epic, itch.io)',k:'vente',r:0,p:'game'},{a:'7072',n:'Ventes jeux : consoles',k:'vente',r:0,p:'game'},{a:'7073',n:'Ventes jeux : mobile (stores)',k:'vente',r:0,p:'game'},{a:'7074',n:'DLC, achats intégrés, publicité',k:'vente',r:0,p:'game'},{a:'740',n:'Subventions d\'exploitation (CNC, FAJV, région)',k:'vente',r:0,p:'game'},{a:'7498',n:'Crédit d\'impôt jeu vidéo (CIJV)',k:'vente',r:0,p:'game'},
+{a:'6228',n:'Commissions de plateformes',k:'varia',r:0,p:'game'},{a:'6112',n:'Art, audio, QA externalisés',k:'varia',r:20,p:'game'},{a:'6132',n:'Serveurs et cloud',k:'varia',r:20,p:'game'},
+{a:'6512',n:'Licences moteur et middleware',k:'fixe',r:20,p:'game'},{a:'6238',n:'Marketing, presse, influenceurs',k:'fixe',r:20,p:'game'},{a:'6234',n:'Salons et événements (Gamescom, GDC)',k:'fixe',r:20,p:'game'},
+{a:'203',n:'Frais de développement activés (jeu)',k:'immo',r:0,dur:3,p:'game'},{a:'2188',n:'Kits de développement consoles',k:'immo',r:20,dur:3,p:'game'});
+
+/* démos */
+function mkAdd(s){return o=>s.entries.push(Object.assign({id:uid(),delay:0,rate:20,dur:3,mode:'lin',act:'',tiers:''},o))}
+function demoUX(){const s=emptyFor('ux','Freelance UI/UX (exemple)');s.demo=true;s.settings.year=2026;s.settings.tvaRegime='mensuel';s.goal.basket='';s.sr.price='';
+const add=mkAdd(s),cl=['Agence Pixel','Banque Nova','Startup Kiwi'];
+for(let m=0;m<36;m++){const d=addMonths('2026-01-05',m),g=1+0.01*m;
+add({date:d,label:'Mission UX – refonte appli',kind:'vente',cat:'7062',ht:r2(4400*g),delay:30,tiers:cl[0],act:'Missions'});
+add({date:d,label:'Mission UI – design system',kind:'vente',cat:'7062',ht:r2(2200*g),delay:45,tiers:cl[1],act:'Missions'});
+if(m%3===0)add({date:addMonths(d,0),label:'Atelier de cadrage produit',kind:'vente',cat:'7064',ht:1800,delay:30,tiers:cl[2],act:'Ateliers'});
+add({date:d,label:'Abonnements Figma, Adobe, Notion',kind:'fixe',cat:'6511',ht:96});
+add({date:d,label:'Coworking',kind:'fixe',cat:'6135',ht:290});
+add({date:d,label:'Expert-comptable',kind:'fixe',cat:'622',ht:90});
+add({date:d,label:'Assurance RC pro',kind:'fixe',cat:'616',ht:45,rate:0});
+add({date:d,label:'Téléphone et internet',kind:'fixe',cat:'626',ht:45});
+add({date:d,label:'Rémunération dirigeant',kind:'fixe',cat:'641',ht:2600,rate:0});
+add({date:d,label:'Charges patronales',kind:'fixe',cat:'645',ht:1092,rate:0});
+if(m%4===1)add({date:d,label:'Sous-traitance illustration',kind:'varia',cat:'6045',ht:1200,delay:30})}
+add({date:'2026-02-10',label:'MacBook Pro 16"',kind:'immo',cat:'2183',ht:2900,dur:3});add({date:'2026-02-10',label:'Écran 5K',kind:'immo',cat:'2183',ht:1200,dur:3});add({date:'2026-03-05',label:'Tablette graphique',kind:'immo',cat:'2183',ht:800,dur:3});
+s.equity.push({id:uid(),label:'Capital',type:'apport',amount:1000,date:'2026-01-02'});
+s.needs.push({id:uid(),label:'Frais de création de société',ht:700,rate:20});
+s.legal={raison:'Studio Exemple UX',forme:'SASU',siret:'000 000 000 00000',adresse:'1 rue de l\'Exemple, 75000 Paris',tva:'FR00000000000',iban:'FR76 0000 0000 0000 0000 0000 000',bic:'EXAMFRPP',email:'contact@exemple.fr'};
+s.tiers=cl.map((n,i)=>({id:uid(),name:n,addr:['12 rue du Pixel, 69000 Lyon','5 av. de la Banque, 75008 Paris','8 rue Kiwi, 33000 Bordeaux'][i],siret:'',tva:'',email:''}));
+const mk=(type,num,client,date,st,lines)=>s.docs.push({id:uid(),type,num,client,date,terms:30,status:st,lines,notes:'',ref:'',entryIds:[]});
+mk('facture','FAC-2026-001','Agence Pixel','2026-10-31','envoyé',[{d:'Mission UX, octobre',q:8,u:'jour',pu:550,rate:20}]);
+mk('devis','DEV-2026-004','Startup Kiwi','2026-11-10','envoyé',[{d:'Audit UX et parcours utilisateur',q:6,u:'jour',pu:600,rate:20},{d:'Restitution et recommandations',q:1,u:'forfait',pu:900,rate:20}]);
+mk('facture','FAC-2026-002','Banque Nova','2026-09-30','payé',[{d:'Design system, septembre',q:10,u:'jour',pu:520,rate:20}]);
+s.fl.tjm=550;return s}
+function demoGame(){const s=emptyFor('game','Studio jeux vidéo (exemple)');s.demo=true;s.settings.year=2026;s.settings.tvaRegime='mensuel';s.settings.stock=0;s.goal.result=40000;
+const add=mkAdd(s),G='Projet Nebula';
+for(let m=0;m<36;m++){const d=addMonths('2026-01-05',m);
+[['Développeur gameplay',3400],['Développeur moteur',3300],['Artiste 3D',3000],['Game designer',2800]].forEach(([l,b])=>{add({date:d,label:'Salaire – '+l,kind:'fixe',cat:'641',ht:b,rate:0,act:G});add({date:d,label:'Charges patronales – '+l,kind:'fixe',cat:'645',ht:r2(b*0.42),rate:0,act:G})});
+add({date:d,label:'Loyer du local',kind:'fixe',cat:'613',ht:1200});add({date:d,label:'Licences Unity et outils',kind:'fixe',cat:'6512',ht:420,act:G});add({date:d,label:'Serveurs et cloud',kind:'varia',cat:'6132',ht:140,act:G});
+add({date:d,label:'Expert-comptable',kind:'fixe',cat:'622',ht:250});add({date:d,label:'Assurance',kind:'fixe',cat:'616',ht:80,rate:0});
+if(m%2===0)add({date:d,label:'Sous-traitance audio et musique',kind:'varia',cat:'6112',ht:1500,delay:30,act:G});
+if(m>=6&&m<18)add({date:d,label:'Marketing et communauté',kind:'fixe',cat:'6238',ht:1500,delay:30,act:G})}
+add({date:'2026-01-12',label:'Postes de travail (4)',kind:'immo',cat:'2183',ht:7200,dur:3});add({date:'2026-02-03',label:'Kits de développement consoles',kind:'immo',cat:'2188',ht:4000,dur:3});
+add({date:'2026-08-20',label:'Gamescom',kind:'fixe',cat:'6234',ht:6000,delay:15,act:G});
+[['2026-03-15',60000],['2026-07-15',60000],['2026-11-15',60000]].forEach(([d,a],i)=>add({date:d,label:'Jalon éditeur '+(i+1),kind:'vente',cat:'7065',ht:a,delay:30,act:G,tiers:'Éditeur Aurora'}));
+add({date:'2026-06-20',label:'Subvention CNC (aide à la production)',kind:'vente',cat:'740',ht:25000,rate:0,act:G});
+s.equity.push({id:uid(),label:'Capital',type:'apport',amount:50000,date:'2026-01-02'},{id:uid(),label:'Prêt d\'honneur',type:'compte',amount:30000,date:'2026-02-01'});
+s.loans.push({id:uid(),label:'Prêt innovation (exemple)',amount:100000,rate:3.5,months:60,start:'2026-03-01',deferred:12});
+s.needs.push({id:uid(),label:'Frais de création',ht:900,rate:20},{id:uid(),label:'Dépôt de garantie du local',ht:2400,rate:0});
+s.games.push({id:uid(),name:G,budget:760000,start:'2026-01-05',release:'2027-06-15',priceTTC:19.99,vat:20,cut:30,refund:8,units:60000,decay:70,avance:120000,aides:25000,cijvPart:100});
+s.miles.push({id:uid(),game:G,label:'Jalon 4 : bêta',date:'2027-02-15',amount:40000,rate:20,status:'prévu'});
+s.team.push({id:uid(),name:'Développeur gameplay',type:'salarié',amount:3400,pat:42,start:'2026-01-05',end:'',act:G,rate:0},{id:uid(),name:'Artiste 3D',type:'salarié',amount:3000,pat:42,start:'2026-01-05',end:'',act:G,rate:0});
+s.tiers.push({id:uid(),name:'Éditeur Aurora',addr:'20 rue du Jeu, 75010 Paris',siret:'',tva:'',email:''});
+s.legal={raison:'Studio Exemple Games',forme:'SAS',siret:'000 000 000 00000',adresse:'2 rue de l\'Exemple, 33000 Bordeaux',tva:'FR00000000000',iban:'FR76 0000 0000 0000 0000 0000 000',bic:'EXAMFRPP',email:'studio@exemple.fr'};
+return s}
+/* ===== FACTURATION ===== */
+drafts.doc={type:'facture',client:'',date:todayISO,terms:30,lines:[{d:'',q:1,u:'jour',pu:'',rate:20}],notes:'',ref:''};drafts.tiers={name:'',addr:'',siret:'',tva:'',email:''};
+const san=s=>String(s??'').replace(/[  ]/g,' ').replace(/€/g,'EUR').replace(/[‘’]/g,"'").replace(/[“”]/g,'"');
+const DT={devis:'Devis',facture:'Facture',avoir:'Avoir'},PFX={devis:'DEV',facture:'FAC',avoir:'AVO'};
+const ST={brouillon:'Brouillon',envoyé:'Envoyé',accepté:'Accepté',refusé:'Refusé',payé:'Payé'};
+const docTot=D=>D.lines.reduce((a,l)=>{const h=num(l.q)*num(l.pu),v=h*num(l.rate)/100;return P(a.h+h,a.t+h+v)},P());
+const dueOf=D=>addDays(D.date,D.terms||0);
+function nextNum(type,date){const y=date.slice(0,4);const n=S.docs.filter(d=>d.type===type&&d.date.slice(0,4)===y).length+1;return `${PFX[type]}-${y}-${String(n).padStart(3,'0')}`}
+const docLate=D=>D.type==='facture'&&D.status==='envoyé'&&dueOf(D)<todayISO;
+function viewFact(){const y=S.settings.year,d=drafts.doc,Y=S.docs.filter(x=>+x.date.slice(0,4)===y);
+const sm=f=>Y.filter(f).reduce((a,x)=>padd(a,docTot(x)),P());
+let h=head('Facturation','Devis, factures et avoirs avec numérotation automatique, PDF aux mentions légales, comptabilisation en un clic et relances.');
+h+=`<div class="grid">${kpi('Devis en attente',sm(x=>x.type==='devis'&&['brouillon','envoyé'].includes(x.status)))}${kpi('Facturé en '+y,sm(x=>x.type==='facture'&&x.status!=='brouillon'))}${kpi('À encaisser',sm(x=>x.type==='facture'&&x.status==='envoyé'))}${kpi('En retard',sm(docLate),Y.filter(docLate).length+' facture(s)')}</div>`;
+if(ui.relance)h+=`<div class="card"><h2>Relance prête pour ${esc(ui.relance.num)}</h2><textarea id="rel-text" rows="9" style="width:100%;font:13px var(--font);background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px">${esc(ui.relance.text)}</textarea><div class="row" style="margin-top:8px"><button class="pri" data-act="copy-relance">Copier le texte</button><button data-act="close-relance">Fermer</button></div></div>`;
+const tn=S.tiers.map(t=>t.name),tot=docTot(d);
+h+=`<div class="card"><h2>Nouveau document</h2><div class="row">${fld('Type',sel('doc.type',Object.entries(DT),d.type))}${fld('Client',`<input type="text" data-draft="doc.client" list="tn" value="${esc(d.client)}" placeholder="Nom du client"><datalist id="tn">${tn.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>`,'f2')}${fld('Date',`<input type="date" data-draft="doc.date" value="${d.date}">`)}${fld('Paiement à (jours)',sel('doc.terms',[0,15,30,45,60].map(x=>[x,x?x+' jours':'à réception']),d.terms))}${fld('Projet ou activité',`<input type="text" data-draft="doc.ref" list="acts" value="${esc(d.ref)}"><datalist id="acts">${actNames().map(a=>`<option value="${esc(a)}">`).join('')}</datalist>`)}</div>
+<div class="scroll"><table class="t" style="margin-top:10px"><thead><tr><th class="l">Désignation</th><th>Qté</th><th class="l">Unité</th><th>PU HT (€)</th><th>TVA</th><th>Total HT</th><th>Total TTC</th><th></th></tr></thead><tbody>${d.lines.map((l,i)=>{const h1=num(l.q)*num(l.pu);return `<tr><td class="l"><input type="text" data-ext="dl" data-i="${i}" data-f="d" value="${esc(l.d)}" placeholder="Désignation" style="min-width:220px"></td><td><input type="text" inputmode="decimal" data-ext="dl" data-i="${i}" data-f="q" value="${l.q}" style="width:64px"></td><td class="l"><input type="text" data-ext="dl" data-i="${i}" data-f="u" value="${esc(l.u)}" style="width:80px"></td><td><input type="text" inputmode="decimal" data-ext="dl" data-i="${i}" data-f="pu" value="${l.pu}" style="width:90px"></td><td><select data-ext="dl" data-i="${i}" data-f="rate" style="width:78px">${RATES.map(r=>`<option value="${r}"${+l.rate===r?' selected':''}>${r} %</option>`).join('')}</select></td><td class="num" style="color:var(--ht)" data-lh="${i}">${n2(h1)}</td><td class="num" style="color:var(--ttc)" data-lt="${i}">${n2(h1*(1+num(l.rate)/100))}</td><td>${d.lines.length>1?`<button class="lnk danger" data-act="dl-del" data-i="${i}">Suppr.</button>`:''}</td></tr>`}).join('')}</tbody></table></div>
+<div class="row" style="justify-content:space-between;align-items:center;margin-top:10px"><button data-act="dl-add">Ajouter une ligne</button><div class="num" id="doc-tot">Total <b style="color:var(--ht)">${e2(tot.h)} HT</b> · TVA ${e2(tot.t-tot.h)} · <b style="color:var(--ttc)">${e2(tot.t)} TTC</b></div></div>
+${fld('Notes (facultatif)',`<input type="text" data-draft="doc.notes" value="${esc(d.notes)}" placeholder="Ex. Acompte de 30 % à la commande">`,'f2')}<div class="row" style="margin-top:10px"><button class="pri" data-act="add-doc">Créer le document</button></div></div>`;
+h+=`<div class="card"><h2>Documents ${y} (${Y.length})</h2><div class="scroll"><table class="t"><thead><tr><th class="l">Numéro</th><th class="l">Client</th><th class="l">Date</th><th class="l">Échéance</th><th>HT</th><th>TTC</th><th class="l">Statut</th><th></th></tr></thead><tbody>${Y.sort((a,b)=>b.date.localeCompare(a.date)).map(D=>{const t=docTot(D),bk=D.entryIds&&D.entryIds.length;return `<tr><td class="l num">${esc(D.num)}</td><td class="l">${esc(D.client)}</td><td class="l num">${fdate(D.date)}</td><td class="l num">${D.type==='devis'?'-':fdate(dueOf(D))}</td><td class="num" style="color:var(--ht)">${n2(t.h)}</td><td class="num" style="color:var(--ttc)">${n2(t.t)}</td><td class="l"><span class="chip ${docLate(D)?'bad':D.status==='payé'?'good':''}">${docLate(D)?'En retard':ST[D.status]}</span>${bk?' <span class="chip">comptabilisé</span>':''}</td><td class="l" style="white-space:nowrap"><button class="lnk" data-act="doc-pdf" data-id="${D.id}">PDF</button>${D.type==='devis'&&D.status!=='accepté'?`<button class="lnk" data-act="doc-accept" data-id="${D.id}">Accepté</button>`:''}${D.type==='devis'?`<button class="lnk" data-act="doc-conv" data-id="${D.id}">Facturer</button>`:''}${D.type!=='devis'&&!bk?`<button class="lnk" data-act="doc-book" data-id="${D.id}">Comptabiliser</button>`:''}${D.type==='facture'&&D.status!=='payé'?`<button class="lnk" data-act="doc-paid" data-id="${D.id}">Payée</button>`:''}${docLate(D)?`<button class="lnk" data-act="doc-relance" data-id="${D.id}">Relancer</button>`:''}${D.status==='brouillon'?`<button class="lnk" data-act="doc-sent" data-id="${D.id}">Envoyé</button>`:''}<button class="lnk danger" data-act="doc-del" data-id="${D.id}">Suppr.</button></td></tr>`}).join('')||'<tr><td colspan="8" class="l" style="color:var(--muted)">Aucun document pour cet exercice.</td></tr>'}</tbody></table></div><p class="note">« Comptabiliser » crée la vente dans la comptabilité (avec son échéance). « Payée » la marque réglée à aujourd'hui. Les informations légales de l'émetteur se règlent dans Paramètres.</p></div>`;
+return h}
+const docById=b=>S.docs.find(x=>x.id===b.dataset.id);
+EXT['dl-add']=()=>{drafts.doc.lines.push({d:'',q:1,u:S.profile==='ux'?'jour':'unité',pu:'',rate:S.settings.tvaRegime==='franchise'?0:20});return(render(),false)};
+EXT['dl-del']=b=>{drafts.doc.lines.splice(+b.dataset.i,1);return(render(),false)};
+EXT['add-doc']=()=>{const d=drafts.doc;if(!d.client.trim()||!d.lines.some(l=>num(l.pu)!==0)){toast('Renseignez le client et au moins une ligne chiffrée.');return false}
+S.docs.push({id:uid(),type:d.type,num:nextNum(d.type,d.date),client:d.client.trim(),date:d.date,terms:num(d.terms),status:'brouillon',lines:d.lines.filter(l=>l.d.trim()||num(l.pu)).map(l=>({...l,q:num(l.q,1),pu:num(l.pu),rate:num(l.rate)})),notes:d.notes,ref:d.ref.trim(),entryIds:[]});
+if(!S.tiers.some(t=>t.name===d.client.trim()))S.tiers.push({id:uid(),name:d.client.trim(),addr:'',siret:'',tva:'',email:''});
+d.lines=[{d:'',q:1,u:S.profile==='ux'?'jour':'unité',pu:'',rate:S.settings.tvaRegime==='franchise'?0:20}];d.client='';d.notes='';toast('Document créé.')};
+EXT['doc-sent']=b=>{docById(b).status='envoyé'};EXT['doc-accept']=b=>{docById(b).status='accepté'};
+EXT['doc-conv']=b=>{const D=docById(b);D.status='accepté';S.docs.push({...JSON.parse(JSON.stringify(D)),id:uid(),type:'facture',num:nextNum('facture',todayISO),date:todayISO,status:'brouillon',entryIds:[]});toast('Facture créée à partir du devis.')};
+EXT['doc-book']=b=>{const D=docById(b);if(S.locked[+D.date.slice(0,4)]){toast('Exercice clôturé.');return false}const g={};D.lines.forEach(l=>{g[num(l.rate)]=(g[num(l.rate)]||0)+num(l.q)*num(l.pu)});const sg=D.type==='avoir'?-1:1;
+D.entryIds=Object.entries(g).map(([r,hh])=>{const e={id:uid(),date:D.date,label:D.num+' – '+D.client,kind:'vente',cat:saleCat(),ht:r2(sg*hh),rate:+r,delay:D.terms||0,dur:3,mode:'lin',act:D.ref||'',tiers:D.client,doc:D.id};S.entries.push(e);return e.id});if(D.status==='brouillon')D.status='envoyé';toast('Vente comptabilisée.')};
+EXT['doc-paid']=b=>{const D=docById(b);D.status='payé';S.entries.forEach(e=>{if(e.doc===D.id)e.paid=todayISO});if(!(D.entryIds||[]).length)toast('Pensez à comptabiliser la facture pour qu\'elle apparaisse dans la trésorerie.')};
+EXT['doc-del']=b=>{const D=docById(b);if(D&&D.entryIds&&D.entryIds.length)S.entries=S.entries.filter(e=>e.doc!==D.id);S.docs=S.docs.filter(x=>x!==D)};
+EXT['doc-relance']=b=>{const D=docById(b),t=docTot(D),late=Math.round((Date.parse(todayISO)-Date.parse(dueOf(D)))/864e5),L=S.legal;
+ui.relance={num:D.num,text:`Objet : Relance de paiement, facture ${D.num}\n\nBonjour,\n\nSauf erreur de ma part, la facture ${D.num} du ${fdate(D.date)}, d'un montant de ${e2(t.t)} TTC (${e2(t.h)} HT), est arrivée à échéance le ${fdate(dueOf(D))} et reste impayée à ce jour (${late} jours de retard).\n\nPouvez-vous procéder à son règlement dans les meilleurs délais${L.iban?' par virement sur l\'IBAN '+L.iban:''} ?\n\nPour rappel, tout retard de paiement entraîne des pénalités de retard et une indemnité forfaitaire de 40 € pour frais de recouvrement.\n\nSi le règlement est déjà parti, merci de ne pas tenir compte de ce message.\n\nCordialement,\n${L.raison||S.settings.name}`};return(render(),false)};
+EXT['close-relance']=()=>{ui.relance=null;return(render(),false)};
+EXT['copy-relance']=()=>{const t=$('#rel-text');try{navigator.clipboard.writeText(t.value).then(()=>toast('Texte copié.')).catch(()=>{t.select();toast('Sélectionné : copiez avec Ctrl+C.')})}catch(e){t.select()}return false};
+EXT['doc-pdf']=b=>{const D=docById(b);if(!D)return false;(async()=>{if(!dl){toast('Téléchargement indisponible ici.');return}
+try{await loadLib('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');await loadLib('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js');
+const doc=new window.jspdf.jsPDF({unit:'pt',format:'a4'}),L=S.legal,cl=S.tiers.find(t=>t.name===D.client)||{},t=docTot(D);let y=48;
+doc.setFontSize(15);doc.text(san(L.raison||S.settings.name),40,y);doc.setFontSize(9);[L.forme,L.adresse,L.siret?'SIRET '+L.siret:'',L.tva?'TVA '+L.tva:'',L.email].filter(Boolean).forEach(x=>{y+=12;doc.text(san(x),40,y)});
+doc.setFontSize(18);doc.text(san(DT[D.type].toUpperCase()+' '+D.num),555,56,{align:'right'});doc.setFontSize(9);doc.text('Date : '+fdate(D.date),555,72,{align:'right'});if(D.type!=='devis')doc.text(san('Echeance : '+fdate(dueOf(D))),555,84,{align:'right'});else doc.text('Valable 30 jours',555,84,{align:'right'});
+y=Math.max(y,100)+24;doc.setFontSize(10);doc.text('Client',340,y);doc.setFontSize(9);[D.client,cl.addr,cl.siret?'SIRET '+cl.siret:'',cl.tva?'TVA '+cl.tva:''].filter(Boolean).forEach(x=>{y+=12;doc.text(san(x),340,y)});
+doc.autoTable({startY:y+20,head:[['Designation','Qte','Unite','PU HT','TVA','Total HT','Total TTC']],body:D.lines.map(l=>{const h1=num(l.q)*num(l.pu);return [san(l.d),String(l.q),san(l.u),san(n2(l.pu)),l.rate+' %',san(n2(h1)),san(n2(h1*(1+num(l.rate)/100)))]}),styles:{fontSize:8.5},headStyles:{fillColor:[29,78,95]},margin:{left:40,right:40}});
+y=doc.lastAutoTable.finalY+18;doc.setFontSize(10);doc.text(san('Total HT : '+n2(t.h)+' EUR'),555,y,{align:'right'});doc.text(san('TVA : '+n2(t.t-t.h)+' EUR'),555,y+14,{align:'right'});doc.setFontSize(12);doc.text(san('Total TTC : '+n2(t.t)+' EUR'),555,y+32,{align:'right'});
+y+=60;doc.setFontSize(8);const fr=S.settings.tvaRegime==='franchise',M=[];if(fr)M.push('TVA non applicable, article 293 B du CGI.');
+if(D.type==='devis')M.push('Bon pour accord, date et signature du client :');else{M.push('Paiement par virement'+(L.iban?' : IBAN '+L.iban+(L.bic?' - BIC '+L.bic:''):'')+'.');M.push('Pas d\'escompte pour paiement anticipe. En cas de retard : penalites egales a trois fois le taux d\'interet legal et indemnite forfaitaire de 40 EUR pour frais de recouvrement.')}
+if(D.notes)M.push(D.notes);M.forEach(m=>{doc.text(san(m),40,y,{maxWidth:515});y+=22});
+await dl.save({filename:D.num+'.pdf',data:doc.output('arraybuffer')})}catch(e){if(e&&e.code!=='declined')toast('Création du PDF impossible.')}})();return false};
+document.addEventListener('input',e=>{const t=e.target;if(t.dataset.ext!=='dl')return;const l=drafts.doc.lines[+t.dataset.i];l[t.dataset.f]=t.value;
+const i=t.dataset.i,h1=num(l.q)*num(l.pu),a=$('[data-lh="'+i+'"]'),c=$('[data-lt="'+i+'"]');if(a)a.textContent=n2(h1);if(c)c.textContent=n2(h1*(1+num(l.rate)/100));
+const T=docTot(drafts.doc),z=$('#doc-tot');if(z)z.innerHTML=`Total <b style="color:var(--ht)">${e2(T.h)} HT</b> · TVA ${e2(T.t-T.h)} · <b style="color:var(--ttc)">${e2(T.t)} TTC</b>`});
+document.addEventListener('change',e=>{const t=e.target;if(t.dataset.ext==='dl'&&t.dataset.f==='rate'){drafts.doc.lines[+t.dataset.i].rate=t.value;render()}});
+
+/* ===== CLIENTS ET FOURNISSEURS ===== */
+function tiersStats(y,vente){const m={};S.entries.forEach(e=>{if(+e.date.slice(0,4)!==y||(e.kind==='vente')!==vente)return;const k=e.tiers||'(sans nom)',o=m[k]||(m[k]={t:P(),open:P(),d:[]});const p=P(e.ht,tt(e));o.t=padd(o.t,p);if(!e.paid&&e.date<=todayISO)o.open=padd(o.open,p);if(e.paid)o.d.push((Date.parse(e.paid)-Date.parse(e.date))/864e5)});return m}
+function viewClients(){const y=S.settings.year,tr=drafts.tiers;let h=head('Clients et fournisseurs','Qui vous rapporte le plus, qui paie vite, qui doit encore de l\'argent. Les fiches servent à la facturation.');
+const blk=(vente,t)=>{const m=tiersStats(y,vente),ks=Object.keys(m).sort((a,b)=>m[b].t.h-m[a].t.h),tot=sum(ks.map(k=>m[k].t.h));
+return `<div class="card"><h2>${t} ${y}</h2><div class="scroll"><table class="t"><thead><tr><th class="l">${vente?'Client':'Fournisseur'}</th><th>Montant</th><th>Part</th><th>${vente?'À encaisser':'À payer'}</th><th>Délai moyen</th></tr></thead><tbody>${ks.map(k=>{const sh=tot>0?m[k].t.h/tot*100:0,dm=m[k].d.length?n0(sum(m[k].d)/m[k].d.length)+' j':'-';return `<tr><td class="l">${esc(k)}</td><td>${dual(m[k].t)}</td><td class="num">${n0(sh)} %${vente&&sh>40?' <span class="chip warn">dépendance</span>':''}</td><td>${dual(m[k].open)}</td><td class="num">${dm}</td></tr>`}).join('')||'<tr><td colspan="5" class="l" style="color:var(--muted)">Renseignez le champ « Client ou fournisseur » de vos pièces.</td></tr>'}</tbody></table></div></div>`};
+h+=blk(true,'Clients')+blk(false,'Fournisseurs');
+h+=`<div class="card"><h2>Fiches (${S.tiers.length})</h2><div class="row">${fld('Nom',inp('tiers.name',tr.name),'f2')}${fld('Adresse',inp('tiers.addr',tr.addr),'f2')}${fld('SIRET',inp('tiers.siret',tr.siret))}${fld('N° TVA',inp('tiers.tva',tr.tva))}${fld('Email',inp('tiers.email',tr.email))}<button class="pri" data-act="add-tiers">Ajouter</button></div>${S.tiers.map(t=>`<div class="row" style="justify-content:space-between;align-items:center;margin-top:8px"><span><b>${esc(t.name)}</b> · ${esc(t.addr||'adresse non renseignée')}${t.email?' · '+esc(t.email):''}</span><button class="lnk danger" data-act="del-tiers" data-id="${t.id}">Suppr.</button></div>`).join('')}</div>`;return h}
+EXT['add-tiers']=()=>{const d=drafts.tiers;if(!d.name.trim()){toast('Renseignez le nom.');return false}S.tiers.push({id:uid(),...d,name:d.name.trim()});Object.assign(d,{name:'',addr:'',siret:'',tva:'',email:''})};
+EXT['del-tiers']=b=>{S.tiers=S.tiers.filter(x=>x.id!==b.dataset.id)};
+/* ===== FREELANCE UI/UX : STATUT, TJM, SEUILS ===== */
+const BAREME=[[11600,0],[29579,.11],[84577,.30],[181917,.41],[Infinity,.45]];
+function irCalc(imp,parts){parts=Math.max(1,parts||1);const q=Math.max(0,imp)/parts;let t=0,lo=0;for(const [hi,r] of BAREME){if(q>lo)t+=(Math.min(q,hi)-lo)*r;lo=hi}return t*parts}
+const isCalc=b=>b>0?0.15*Math.min(b,42500)+0.25*Math.max(0,b-42500):0;
+function chargesExp(y){let c=0;E().forEach(e=>{if(+e.date.slice(0,4)===y&&(e.kind==='varia'||e.kind==='fixe')&&!['641','645'].includes(e.cat))c+=e.ht});return c+dotYear(y).h+loanYear(y).int}
+function simStatuts(){const f=S.fl,y=S.settings.year,s=yearStats(y),CA=ov(f.ca)?+f.ca:s.ca.h,CH=ov(f.ch)?+f.ch:chargesExp(y),B=CA-CH,parts=f.parts||1,tns=(f.tns??45)/100,pat=(f.pat??42)/100,sal=(f.sal??22)/100,pfu=(f.pfu??30)/100,rm=(f.remu??60)/100;
+const o={};
+const mc=CA*(f.tmicro??25.6)/100,mi=irCalc(CA*(1-(f.abat??34)/100),parts);
+o.micro={label:'Micro-entreprise',cot:mc,imp:mi,is:0,div:0,net:CA-CH-mc-mi,ok:CA<=(f.plafond??83600),note:CA<=(f.plafond??83600)?'Charges non déductibles : seul l\'abattement s\'applique.':'Plafond de chiffre d\'affaires dépassé.'};
+const ce=Math.max(0,B)*tns/(1+tns),ie=irCalc(B-ce,parts);o.ei={label:'EI au réel',cot:ce,imp:ie,is:0,div:0,net:B-ce-ie,ok:true,note:'Charges déductibles, cotisations sur le bénéfice.'};
+const mk=(label,cost,pc)=>{const R=Math.max(0,B)*rm,net0=R/(1+pc),cot=R-net0,irr=irCalc(net0*0.9,parts),pr=Math.max(0,B)-R,is=isCalc(pr),div=pr-is;return{label,cot,imp:irr+div*pfu,is,div,net:net0-irr+div*(1-pfu),ok:true,note:'Rémunération : '+Math.round(rm*100)+' % du résultat, le reste en dividendes (flat tax).'}};
+o.eurl=mk('EURL à l\'IS',0,tns);
+{const R=Math.max(0,B)*rm,brut=R/(1+pat),net0=brut*(1-sal),cot=R-net0,irr=irCalc(net0*0.9,parts),pr=Math.max(0,B)-R,is=isCalc(pr),div=pr-is;o.sasu={label:'SASU à l\'IS',cot,imp:irr+div*pfu,is,div,net:net0-irr+div*(1-pfu),ok:true,note:'Charges patronales '+Math.round(pat*100)+' %, salariales '+Math.round(sal*100)+' %, dividendes sans cotisations.'}}
+return{o,CA,CH,B}}
+function docsDays(y){let d=0,h=0;S.docs.forEach(D=>{if(D.type==='facture'&&D.status!=='brouillon'&&+D.date.slice(0,4)===y)D.lines.forEach(l=>{if((l.u||'').toLowerCase().startsWith('jour')){d+=num(l.q);h+=num(l.q)*num(l.pu)}})});return{d,h}}
+function viewFreelance(){const f=S.fl,y=S.settings.year,sim=simStatuts(),c=srCalc(),kv=c.kv;
+const jf=Math.max(1,365-104-num(f.feries??8)-num(f.conges??25)),jb=Math.round(jf*(1-num(f.nonfact??20)/100)),R=num(S.goal.result),req=c.tm>0?(c.cfH+R)/c.tm:0,tjmMin=req/jb,dd=docsDays(y);
+const pl=num(f.plafond??83600),sm=sim.CA;
+let h=head('Freelance UI/UX','Votre TJM minimum, la comparaison des statuts, vos seuils réglementaires et l\'argent à mettre de côté. Les taux sont des estimations 2026 à vérifier auprès de l\'URSSAF et des impôts.');
+h+=`<div class="grid">${kpi('TJM minimum pour votre objectif',P(tjmMin,tjmMin*kv),'Sur '+jb+' jours facturables')}${kpi('TJM moyen réalisé',dd.d>0?P(dd.h/dd.d,dd.h/dd.d*kv):P(),dd.d>0?n0(dd.d)+' jours facturés '+y:'Facturez en « jour » dans Facturation')}<div class="kpi"><div class="kl">Taux d'occupation</div><div class="kv"><span class="h">${n0(dd.d/jb*100)} %</span></div><div class="ks">${n0(dd.d)} jours facturés sur ${jb} possibles</div></div>${kpi('TJM actuel de référence',P(num(f.tjm),num(f.tjm)*kv))}</div>`;
+h+=`<div class="card"><h2>Capacité de travail</h2><div class="row">${fld('Congés (jours)',bindIn('fl.conges',f.conges))}${fld('Jours fériés ouvrés',bindIn('fl.feries',f.feries))}${fld('Temps non facturé (%)',bindIn('fl.nonfact',f.nonfact))}${fld('TJM de référence HT (€)',bindIn('fl.tjm',f.tjm))}</div><p class="note">Jours facturables = 365 − 104 week-ends − fériés − congés, réduits du temps de prospection, d'administratif et de formation. Le résultat visé se règle dans Objectif de vente.</p></div>`;
+h+=`<div class="card"><h2>Seuils réglementaires ${y}</h2><div class="two"><div><div class="kl">Plafond micro-entreprise (${e0(pl)} HT)</div><div class="bar"><div style="width:${Math.min(100,sm/pl*100)}%"></div></div><p class="note">${e0(sm)} HT, ${n0(sm/pl*100)} % du plafond.</p></div><div><div class="kl">Franchise en base de TVA (37 500 € HT, tolérance 41 250 €)</div><div class="bar"><div style="width:${Math.min(100,sm/41250*100)}%"></div></div><p class="note">${sm>41250?'Seuil majoré dépassé : TVA due dès le 1er jour du mois de dépassement.':sm>37500?'Seuil dépassé, dans la tolérance : TVA due l\'année suivante.':'Sous le seuil de franchise.'}</p></div></div></div>`;
+const row=k=>{const x=sim.o[k];return `<tr class="${x.net===Math.max(...Object.values(sim.o).filter(q=>q.ok).map(q=>q.net))&&x.ok?'strong':''}"><td class="l">${x.label}${x.ok?'':' <span class="chip bad">hors plafond</span>'}<br><span class="note" style="margin:0">${esc(x.note)}</span></td><td>${dual(P(x.cot,x.cot))}</td><td>${dual(P(x.is,x.is))}</td><td>${dual(P(x.imp,x.imp))}</td><td>${dual(P(x.net,x.net))}</td><td class="num">${dual(P(x.net/12,x.net/12))}</td><td class="num">${sim.CA>0?n0(x.net/sim.CA*100)+' %':'-'}</td></tr>`};
+h+=`<div class="card"><h2>Comparaison des statuts, exercice ${y}</h2><div class="grid" style="margin-bottom:12px">${kpi('Chiffre d\'affaires',P(sim.CA,sm*0+s2(sim.CA)))}${kpi('Charges d\'exploitation',P(sim.CH,sim.CH*ratio(yearStats(y).cf,1.2)))}</div><div class="scroll"><table class="t"><thead><tr><th class="l">Statut</th><th>Cotisations</th><th>Impôt société</th><th>Impôt revenu et flat tax</th><th>Net en poche par an</th><th>Net par mois</th><th>% du CA</th></tr></thead><tbody>${['micro','ei','eurl','sasu'].map(row).join('')}</tbody></table></div>
+<p class="note">Net en poche = ce qui reste après charges, cotisations et impôts. Aucune TVA sur ces postes : HT et TTC sont identiques. Ligne en gras : le net le plus élevé.</p>
+<div class="row" style="margin-top:8px">${fld('Part du résultat versée en rémunération (%)',bindIn('fl.remu',f.remu??60))}${fld('Parts fiscales',bindIn('fl.parts',f.parts??1))}${fld('CA simulé (€ HT)',bindIn('fl.ca',f.ca??'',n0(sim.CA)))}${fld('Charges simulées (€ HT)',bindIn('fl.ch',f.ch??'',n0(sim.CH)))}</div>
+<details style="margin-top:10px"><summary>Taux utilisés (modifiables)</summary><div class="row" style="margin-top:8px">${fld('Cotisations micro BNC (%)',bindIn('fl.tmicro',f.tmicro??25.6))}${fld('Abattement micro BNC (%)',bindIn('fl.abat',f.abat??34))}${fld('Plafond micro (€)',bindIn('fl.plafond',f.plafond??83600))}${fld('Cotisations TNS (% du net)',bindIn('fl.tns',f.tns??45))}${fld('Charges patronales SASU (%)',bindIn('fl.pat',f.pat??42))}${fld('Charges salariales SASU (%)',bindIn('fl.sal',f.sal??22))}${fld('Flat tax dividendes (%)',bindIn('fl.pfu',f.pfu??30))}</div></details></div>`;
+const k=f.statut||'sasu',x=sim.o[k]||sim.o.sasu,rate=sim.CA>0?(x.cot+x.imp+x.is)/sim.CA:0,vat=ratio(yearStats(y).ca,1)-1;
+h+=`<div class="card"><h2>Argent à mettre de côté</h2><div class="row">${fld('Statut',`<select data-bind="fl.statut">${[['micro','Micro-entreprise'],['ei','EI au réel'],['eurl','EURL à l\'IS'],['sasu','SASU à l\'IS']].map(([a,b])=>`<option value="${a}"${k===a?' selected':''}>${b}</option>`).join('')}</select>`)}</div>
+<p>Pour chaque <b>100 € HT</b> encaissés (soit <b>${n2(100*(1+vat))} € TTC</b>) : gardez <b>${n2(100*vat)} €</b> pour la TVA et <b>${n2(100*rate)} €</b> pour cotisations et impôts. Il vous reste environ <b>${n2(100*(1-rate))} € HT</b>, avant vos charges.</p>
+<p class="note">Estimation à partir du statut choisi. Ouvrez un compte épargne dédié et alimentez-le à chaque encaissement.</p></div>`;
+return h}
+const s2=v=>v*(ratio(yearStats(S.settings.year).ca,1.2));
+/* ===== STUDIO DE JEUX VIDÉO ===== */
+drafts.game={name:'',budget:'',start:todayISO,release:'',priceTTC:'19.99',vat:20,cut:30,refund:8,units:'',decay:70,avance:'',aides:'',cijvPart:100};
+drafts.mile={game:'',label:'',date:todayISO,amount:'',rate:20};drafts.mem={name:'',type:'salarié',amount:'',pat:42,start:todayISO,end:'',act:'',rate:20};
+const CIJV_RATE=0.30,CIJV_CAP=6e6,CIJV_MIN=1e5,CIJV_CATS=['641','645','611','6112','203'];
+const unitNet=g=>num(g.priceTTC)/(1+num(g.vat)/100)*(1-num(g.cut)/100)*(1-num(g.refund)/100);
+function gameStats(g){const o={cost:P(),costDone:P(),rev:P(),revNet:0,elig:0};S.entries.forEach(e=>{if(e.act!==g.name)return;const p=P(e.ht,tt(e));if(e.kind==='vente'){o.rev=padd(o.rev,p);if(['7071','7072','7073','7074','7065','7066'].includes(e.cat))o.revNet+=e.ht}else{o.cost=padd(o.cost,p);if(e.date<=todayISO)o.costDone=padd(o.costDone,p);if(CIJV_CATS.includes(e.cat))o.elig+=e.ht}});return o}
+function viewJeux(){const g0=drafts.game,m0=drafts.mile;let h=head('Jeux et projets','Budget, coûts et recettes de chaque jeu, rentabilité par unité vendue, crédit d\'impôt jeu vidéo, jalons éditeur et simulateur de ventes. Rattachez vos pièces à un jeu avec le champ « Activité ».');
+h+=`<div class="card"><h2>Nouveau jeu</h2><div class="row">${fld('Nom (identique au champ Activité)',inp('game.name',g0.name),'f2')}${fld('Budget total HT (€)',inp('game.budget',g0.budget))}${fld('Début',`<input type="date" data-draft="game.start" value="${g0.start}">`)}${fld('Sortie',`<input type="date" data-draft="game.release" value="${g0.release}">`)}${fld('Prix public TTC (€)',inp('game.priceTTC',g0.priceTTC))}${fld('Commission plateforme (%)',inp('game.cut',g0.cut))}${fld('Remboursements (%)',inp('game.refund',g0.refund))}${fld('Unités prévues sur 24 mois',inp('game.units',g0.units))}${fld('Avance éditeur (€)',inp('game.avance',g0.avance))}<button class="pri" data-act="add-game">Ajouter</button></div></div>`;
+S.games.forEach(g=>{const st=gameStats(g),un=unitNet(g),cost=Math.max(num(g.budget),st.cost.h),be=un>0?Math.max(0,cost-num(g.aides))/un:0,rec=Math.max(0,num(g.avance)-st.revNet),pct=num(g.budget)>0?st.costDone.h/num(g.budget)*100:0;
+const el=Math.min(st.elig*num(g.cijvPart)/100,CIJV_CAP),cj=CIJV_RATE*el,okMin=cost>=CIJV_MIN;
+h+=`<div class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">${esc(g.name)}</h2><button class="lnk danger" data-act="del-game" data-id="${g.id}">Supprimer</button></div>
+<div class="grid" style="margin-top:10px">${kpi('Budget',P(num(g.budget),num(g.budget)*1.2))}${kpi('Dépensé à ce jour',st.costDone,n0(pct)+' % du budget')}${kpi('Coûts prévus au total',st.cost)}${kpi('Recettes saisies',st.rev)}</div>
+<div class="bar" style="margin:10px 0"><div style="width:${Math.min(100,pct)}%"></div></div>
+<div class="grid"><div class="kpi"><div class="kl">Revenu net par unité</div><div class="kv"><span class="h">${e2(un)}</span><span class="tag h">HT</span></div><div class="kv"><span class="t">${e2(un*1.2)}</span><span class="tag t">TTC</span></div><div class="ks">Prix ${e2(num(g.priceTTC))} TTC, après commission et remboursements</div></div>
+<div class="kpi"><div class="kl">Unités pour rentabiliser</div><div class="kv"><span class="h">${n0(Math.ceil(be))}</span></div><div class="ks">Budget moins aides (${e0(num(g.aides))}). Prévu : ${n0(num(g.units))} unités.</div></div>
+<div class="kpi"><div class="kl">Avance éditeur restant à recouper</div><div class="kv"><span class="h">${e0(rec)}</span></div><div class="ks">Avance de ${e0(num(g.avance))}, recettes nettes ${e0(st.revNet)}</div></div></div>
+<div class="row" style="margin-top:12px">${fld('Aides déjà acquises (€)',bindIn('games.'+S.games.indexOf(g)+'.aides',g.aides))}${fld('Avance éditeur (€)',bindIn('games.'+S.games.indexOf(g)+'.avance',g.avance))}${fld('Unités sur 24 mois',bindIn('games.'+S.games.indexOf(g)+'.units',g.units))}${fld('Rétention mensuelle des ventes (%)',bindIn('games.'+S.games.indexOf(g)+'.decay',g.decay))}${fld('Part éligible CIJV (%)',bindIn('games.'+S.games.indexOf(g)+'.cijvPart',g.cijvPart))}</div>
+<div class="row" style="margin-top:10px"><button data-act="gen-sales" data-id="${g.id}">Générer les ventes prévisionnelles (24 mois)</button><button data-act="clear-sales" data-id="${g.id}">Retirer les ventes prévisionnelles</button><button data-act="gen-cijv" data-id="${g.id}">Ajouter le CIJV estimé</button></div>
+<p class="note">Ventes prévisionnelles : ${n0(num(g.units))} unités sur 24 mois à partir de la sortie, selon une courbe décroissante, payées 45 jours après la fin du mois. CIJV estimé : <b>${e0(cj)}</b> (30 % de ${e0(el)} de dépenses éligibles : salaires, charges, sous-traitance, développement activé).${okMin?'':' Le coût total du jeu est sous 100 000 € : projet non éligible.'} Agrément du CNC requis, plafond de 6 M€ par an. Le crédit est remboursé après le dépôt de la liasse fiscale.</p></div>`});
+h+=`<div class="card"><h2>Jalons éditeur</h2><div class="row">${fld('Jeu',`<select data-draft="mile.game">${S.games.map(g=>`<option${m0.game===g.name?' selected':''}>${esc(g.name)}</option>`).join('')}</select>`)}${fld('Jalon',inp('mile.label',m0.label,'placeholder="Ex. Alpha"'),'f2')}${fld('Date',`<input type="date" data-draft="mile.date" value="${m0.date}">`)}${fld('Montant HT (€)',inp('mile.amount',m0.amount))}${fld('TVA',sel('mile.rate',rateOpts,m0.rate))}<button class="pri" data-act="add-mile">Ajouter</button></div>
+<div class="scroll"><table class="t" style="margin-top:8px"><thead><tr><th class="l">Date</th><th class="l">Jeu</th><th class="l">Jalon</th><th>Montant</th><th class="l">Statut</th><th></th></tr></thead><tbody>${S.miles.sort((a,b)=>a.date.localeCompare(b.date)).map(m=>`<tr><td class="l num">${fdate(m.date)}</td><td class="l">${esc(m.game)}</td><td class="l">${esc(m.label)}</td><td>${dual(P(m.amount,m.amount*(1+m.rate/100)))}</td><td class="l"><span class="chip ${m.status==='encaissé'?'good':''}">${m.status}</span></td><td>${m.status==='prévu'?`<button class="lnk" data-act="mile-bill" data-id="${m.id}">Facturer</button>`:''}${m.status==='facturé'?`<button class="lnk" data-act="mile-paid" data-id="${m.id}">Encaissé</button>`:''}<button class="lnk danger" data-act="del-mile" data-id="${m.id}">Suppr.</button></td></tr>`).join('')||'<tr><td colspan="6" class="l" style="color:var(--muted)">Aucun jalon.</td></tr>'}</tbody></table></div><p class="note">« Facturer » crée la vente (paiement à 30 jours). « Encaissé » la marque réglée.</p></div>`;return h}
+EXT['add-game']=()=>{const d=drafts.game;if(!d.name.trim()||S.games.some(g=>g.name===d.name.trim())){toast('Donnez un nom unique au jeu.');return false}S.games.push({id:uid(),...d,name:d.name.trim()});drafts.mile.game=d.name.trim();Object.assign(d,{name:'',budget:'',units:'',avance:''})};
+EXT['del-game']=b=>{S.games=S.games.filter(g=>g.id!==b.dataset.id)};
+EXT['gen-sales']=b=>{const g=S.games.find(x=>x.id===b.dataset.id),U=num(g.units),dc=Math.min(0.99,Math.max(0.05,num(g.decay)/100)),un=unitNet(g);if(!g.release||U<=0||un<=0){toast('Renseignez la date de sortie, les unités et le prix.');return false}
+let n=0;for(let k=0;k<24;k++){const u=U*(1-dc)*Math.pow(dc,k)/(1-Math.pow(dc,24)),dt=addMonths(g.release,k),key='sim|'+g.id+'|'+dt.slice(0,7);if(S.entries.some(e=>e.tpl===key)||S.locked[+dt.slice(0,4)])continue;
+S.entries.push({id:uid(),date:dt,label:'Ventes prévisionnelles – '+g.name,kind:'vente',cat:'7071',ht:r2(u*un),rate:0,delay:45,dur:3,mode:'lin',act:g.name,tpl:key});n++}toast(n+' mois de ventes générés.')};
+EXT['clear-sales']=b=>{const g=S.games.find(x=>x.id===b.dataset.id);S.entries=S.entries.filter(e=>!(e.tpl||'').startsWith('sim|'+g.id))};
+EXT['gen-cijv']=b=>{const g=S.games.find(x=>x.id===b.dataset.id),st=gameStats(g),cj=CIJV_RATE*Math.min(st.elig*num(g.cijvPart)/100,CIJV_CAP),yr=S.settings.year+1,key='cijv|'+g.id+'|'+yr;
+if(cj<=0){toast('Aucune dépense éligible pour ce jeu.');return false}if(S.entries.some(e=>e.tpl===key)){toast('Le CIJV est déjà ajouté.');return false}
+S.entries.push({id:uid(),date:yr+'-09-15',label:'CIJV estimé – '+g.name,kind:'vente',cat:'7498',ht:r2(cj),rate:0,delay:0,dur:3,mode:'lin',act:g.name,tpl:key});toast('CIJV estimé ajouté en septembre '+yr+'.')};
+EXT['add-mile']=()=>{const d=drafts.mile,a=num(d.amount,NaN);if(!d.game&&S.games[0])d.game=S.games[0].name;if(!d.game||!d.label.trim()||isNaN(a)){toast('Renseignez le jeu, le jalon et le montant.');return false}S.miles.push({id:uid(),game:d.game,label:d.label.trim(),date:d.date,amount:a,rate:num(d.rate),status:'prévu'});Object.assign(d,{label:'',amount:''})};
+EXT['mile-bill']=b=>{const m=S.miles.find(x=>x.id===b.dataset.id);m.status='facturé';m.eid=uid();S.entries.push({id:m.eid,date:m.date,label:'Jalon éditeur – '+m.label,kind:'vente',cat:'7065',ht:m.amount,rate:m.rate,delay:30,dur:3,mode:'lin',act:m.game,tiers:''})};
+EXT['mile-paid']=b=>{const m=S.miles.find(x=>x.id===b.dataset.id);m.status='encaissé';const e=S.entries.find(x=>x.id===m.eid);if(e)e.paid=todayISO};
+EXT['del-mile']=b=>{S.miles=S.miles.filter(x=>x.id!==b.dataset.id)};
+
+/* équipe et runway */
+function runway(){const y=S.settings.year,T=treasury(y),now=new Date(),cur=now.getFullYear()===y?now.getMonth():(y<now.getFullYear()?11:0),i=Math.min(11,Math.max(0,cur));
+const rng=[];for(let k=Math.max(0,i-2);k<=i;k++)rng.push(k);const out=sum(rng.map(k=>T.cvT[k]+T.cfT[k]+T.pay[k]+T.isP[k]+T.cap[k]+T.int[k]))/rng.length,inn=sum(rng.map(k=>T.vT[k]))/rng.length,burn=Math.max(0,out-inn);
+return{cash:T.bT[i],cashH:T.bH[i],burn,out,inn,months:burn>0?Math.max(0,T.bT[i])/burn:Infinity,mi:i}}
+function viewEquipe(){const d=drafts.mem,rw=runway();let h=head('Équipe et runway','Masse salariale, prestataires, coût mensuel de l\'équipe et durée de vie de la trésorerie.');
+const masse=S.team.reduce((a,m)=>{const c=m.type==='salarié'?num(m.amount)*(1+num(m.pat)/100):num(m.amount),t=m.type==='salarié'?c:c*(1+num(m.rate)/100);return padd(a,P(c,t))},P());
+h+=`<div class="grid">${kpi('Coût mensuel de l\'équipe',masse,S.team.length+' personne(s)')}${kpi('Trésorerie ('+MONTHS[rw.mi]+')',P(rw.cashH,rw.cash))}${kpi('Consommation mensuelle nette (burn)',P(rw.burn,rw.burn),'Décaissements moins ventes, moyenne sur 3 mois')}<div class="kpi"><div class="kl">Runway</div><div class="kv"><span class="h">${isFinite(rw.months)?n2(rw.months)+' mois':'Rentable'}</span></div><div class="ks">${isFinite(rw.months)?(rw.months<6?'<span class="chip bad">Moins de 6 mois</span>':rw.months<12?'<span class="chip warn">Moins de 12 mois</span>':'<span class="chip good">Confortable</span>'):'Les ventes couvrent les dépenses'}</div></div></div>`;
+h+=`<div class="card"><h2>Nouveau membre</h2><div class="row">${fld('Nom ou poste',inp('mem.name',d.name),'f2')}${fld('Statut',sel('mem.type',[['salarié','Salarié'],['prestataire','Prestataire']],d.type))}${fld(d.type==='salarié'?'Salaire brut mensuel (€)':'Coût mensuel HT (€)',inp('mem.amount',d.amount))}${d.type==='salarié'?fld('Charges patronales (%)',inp('mem.pat',d.pat)):fld('TVA',sel('mem.rate',rateOpts,d.rate))}${fld('Début',`<input type="date" data-draft="mem.start" value="${d.start}">`)}${fld('Fin (facultatif)',`<input type="date" data-draft="mem.end" value="${d.end}">`)}${fld('Jeu',`<input type="text" data-draft="mem.act" list="acts" value="${esc(d.act)}"><datalist id="acts">${actNames().map(a=>`<option value="${esc(a)}">`).join('')}</datalist>`)}<button class="pri" data-act="add-mem">Ajouter</button></div></div>
+<div class="card"><h2>Équipe (${S.team.length})</h2><div class="scroll"><table class="t"><thead><tr><th class="l">Nom</th><th class="l">Statut</th><th class="l">Période</th><th class="l">Jeu</th><th>Coût mensuel</th><th></th></tr></thead><tbody>${S.team.map(m=>{const c=m.type==='salarié'?num(m.amount)*(1+num(m.pat)/100):num(m.amount),t=m.type==='salarié'?c:c*(1+num(m.rate)/100);return `<tr><td class="l">${esc(m.name)}</td><td class="l">${m.type}</td><td class="l num">${fdate(m.start)} → ${m.end?fdate(m.end):'en cours'}</td><td class="l">${esc(m.act||'-')}</td><td>${dual(P(c,t))}</td><td><button class="lnk" data-act="gen-team" data-id="${m.id}">Générer les pièces</button><button class="lnk danger" data-act="del-mem" data-id="${m.id}">Suppr.</button></td></tr>`}).join('')||'<tr><td colspan="6" class="l" style="color:var(--muted)">Aucun membre.</td></tr>'}</tbody></table></div>
+<div class="row" style="margin-top:10px"><button class="pri" data-act="gen-team-all">Générer toutes les pièces jusqu'à fin ${S.settings.year}</button></div><p class="note">Pour un salarié : le salaire brut et les charges patronales sont créés chaque mois en comptabilité, sans TVA. Un prestataire est créé en charge variable, payé à 30 jours. Aucun doublon n'est créé si vous relancez.</p></div>`;return h}
+function genTeam(m){const end=S.settings.year+'-12-31',stop=m.end&&m.end<end?m.end:end;let n=0;for(let k=0;k<120;k++){const dt=addMonths(m.start,k);if(dt>stop)break;if(S.locked[+dt.slice(0,4)])continue;const key='team|'+m.id+'|'+dt.slice(0,7);if(S.entries.some(e=>(e.tpl||'').startsWith(key)||(e.date.slice(0,7)===dt.slice(0,7)&&(e.label==='Salaire – '+m.name||e.label==='Prestataire – '+m.name))))continue;
+if(m.type==='salarié'){const b=num(m.amount);S.entries.push({id:uid(),date:dt,label:'Salaire – '+m.name,kind:'fixe',cat:'641',ht:b,rate:0,delay:0,dur:3,mode:'lin',act:m.act||'',tpl:key+'|a'},{id:uid(),date:dt,label:'Charges patronales – '+m.name,kind:'fixe',cat:'645',ht:r2(b*num(m.pat)/100),rate:0,delay:0,dur:3,mode:'lin',act:m.act||'',tpl:key+'|b'})}
+else S.entries.push({id:uid(),date:dt,label:'Prestataire – '+m.name,kind:'varia',cat:S.profile==='game'?'6112':'6045',ht:num(m.amount),rate:num(m.rate),delay:30,dur:3,mode:'lin',act:m.act||'',tpl:key+'|a'});n++}return n}
+EXT['add-mem']=()=>{const d=drafts.mem,a=num(d.amount,NaN);if(!d.name.trim()||isNaN(a)){toast('Renseignez le nom et le montant.');return false}S.team.push({id:uid(),...d,name:d.name.trim(),amount:a});Object.assign(d,{name:'',amount:''})};
+EXT['del-mem']=b=>{S.team=S.team.filter(x=>x.id!==b.dataset.id)};
+EXT['gen-team']=b=>{toast(genTeam(S.team.find(x=>x.id===b.dataset.id))+' mois générés.')};
+EXT['gen-team-all']=()=>{toast(sum(S.team.map(genTeam))+' mois générés.')};
+/* ===== CALENDRIER FISCAL ===== */
+function viewCal(){const y=S.settings.year,st=S.settings,T=treasury(y),L=[],add=(date,label,p,t)=>L.push({date,label,p,t});
+if(st.tvaRegime!=='franchise')T.pay.forEach((v,m)=>{if(v>0.5)add(`${y}-${String(m+1).padStart(2,'0')}-20`,'Déclaration et paiement de la TVA (CA3)',P(v,v),'TVA')});
+if(T.due>0)add(`${y+1}-01-20`,'TVA de décembre à payer',P(T.due,T.due),'TVA');
+if(st.tax==='is'){const i1=yearStats(y-1).is.h,i2=yearStats(y-2).is.h;[['03','15'],['06','15'],['09','15'],['12','15']].forEach(([m,d])=>{if(i1>0)add(`${y}-${m}-${d}`,'Acompte d\'impôt sur les sociétés',P(i1/4,i1/4),'IS')});if(i1-i2>0)add(`${y}-05-15`,'Solde d\'impôt sur les sociétés '+(y-1),P(i1-i2,i1-i2),'IS');add(`${y}-05-15`,'Dépôt de la liasse fiscale et des comptes '+(y-1),P(),'Dossier')}
+add(`${y}-12-15`,'Cotisation foncière des entreprises (CFE), à estimer',P(num(st.cfe),num(st.cfe)),'Taxe');
+S.loans.forEach(l=>sched(l).forEach(r=>{if(+r.date.slice(0,4)===y)add(r.date,'Échéance : '+l.label,P(r.capital+r.interest,r.capital+r.interest),'Prêt')}));
+unpaid().filter(x=>x.due>=todayISO).forEach(x=>add(x.due,(x.e.kind==='vente'?'Encaissement attendu : ':'Paiement à effectuer : ')+x.e.label,P(x.e.ht,tt(x.e)),x.e.kind==='vente'?'Client':'Fournisseur'));
+if(S.profile==='ux'&&S.fl.statut==='micro')['04-30','07-31','10-31'].forEach(d=>add(`${y}-${d}`,'Déclaration du chiffre d\'affaires à l\'URSSAF',P(),'URSSAF'));
+L.sort((a,b)=>a.date.localeCompare(b.date));const up=L.filter(x=>x.date>=todayISO||+x.date.slice(0,4)!==new Date().getFullYear());
+return head('Calendrier fiscal et échéances','Toutes vos échéances de '+y+' : TVA, impôt, prêts, encaissements et paiements attendus, avec les montants calculés.')+`<div class="card"><div class="row">${fld('CFE estimée (€)',bindIn('settings.cfe',st.cfe??0))}</div><div class="scroll"><table class="t" style="margin-top:8px"><thead><tr><th class="l">Date</th><th class="l">Échéance</th><th class="l">Type</th><th>Montant</th></tr></thead><tbody>${L.map(x=>`<tr style="${x.date<todayISO?'opacity:.55':''}"><td class="l num">${fdate(x.date)}</td><td class="l">${esc(x.label)}</td><td class="l"><span class="chip">${x.t}</span></td><td>${x.p.t||x.p.h?dual(x.p):'<span class="note">-</span>'}</td></tr>`).join('')}</tbody></table></div><p class="note">Les dates des déclarations sont indicatives : vérifiez votre calendrier sur impots.gouv.fr. Les lignes grisées sont passées.</p></div>`}
+
+/* ===== BILAN SIMPLIFIÉ ===== */
+function viewBilan(){const y=S.settings.year,m={};for(let yy=minYear();yy<=y;yy++)journal(yy).forEach(l=>{const o=m[l.a]||(m[l.a]={d:0,c:0});o.d+=l.d;o.c+=l.c});
+const bal=p=>Object.keys(m).filter(a=>a.startsWith(p)).reduce((s,a)=>s+m[a].d-m[a].c,0),sd=a=>m[a]?m[a].d-m[a].c:0;
+const pr=Object.keys(m).filter(a=>/^7/.test(a)).reduce((s,a)=>s+m[a].c-m[a].d,0),ch=Object.keys(m).filter(a=>/^6/.test(a)).reduce((s,a)=>s+m[a].d-m[a].c,0),rai=pr-ch;let is=0;for(let yy=minYear();yy<=y;yy++)is+=yearStats(yy).is.h;
+const immo=Object.keys(m).filter(a=>/^2[01]|^2[0-9]/.test(a)&&!a.startsWith('28')).reduce((s,a)=>s+Math.max(0,sd(a)),0),am=-Object.keys(m).filter(a=>a.startsWith('28')).reduce((s,a)=>s+sd(a),0);
+const cli=Math.max(0,sd('411')),bq=sd('512'),tvaN=sd('44571')+sd('44566')+sd('44562'),tvaA=Math.max(0,tvaN),tvaP=Math.max(0,-tvaN),fo=Math.max(0,-sd('401')),fi=Math.max(0,-sd('404')),emp=Math.max(0,-sd('164')),cap=-sd('101'),cc=-sd('455'),sub=-sd('131');
+const act=[['Immobilisations nettes',P(immo-am,immo-am)],['Créances clients',P(cli,cli)],['TVA à récupérer',P(tvaA,tvaA)],['Banque',P(Math.max(0,bq),Math.max(0,bq))]],pas=[['Capital',P(cap,cap)],['Comptes courants d\'associés',P(cc,cc)],['Subventions d\'investissement',P(sub,sub)],['Résultat net cumulé',P(rai-is,rai-is)],['Emprunts',P(emp,emp)],['Dettes fournisseurs',P(fo+fi,fo+fi)],['TVA à payer',P(tvaP,tvaP)],['Impôt sur les sociétés dû',P(is,is)],['Banque (découvert)',P(Math.max(0,-bq),Math.max(0,-bq))]];
+const TA=padd(...act.map(x=>x[1])),TP=padd(...pas.map(x=>x[1])),col=(t,L)=>`<table class="t"><thead><tr><th class="l">${t}</th><th>HT</th><th>TTC</th></tr></thead><tbody>${L.map(([l,p])=>`<tr><td class="l">${l}</td><td class="num" style="color:var(--ht)">${n0(p.h)}</td><td class="num" style="color:var(--ttc)">${n0(p.t)}</td></tr>`).join('')}</tbody></table>`;
+return head('Bilan simplifié','Photo de votre situation au 31 décembre '+y+', construite à partir du journal.')+`<div class="two"><div class="card">${col('Actif',act)}<table class="t"><tbody><tr class="strong"><td class="l">Total actif</td><td class="num">${n0(TA.h)}</td><td class="num">${n0(TA.t)}</td></tr></tbody></table></div><div class="card">${col('Passif',pas)}<table class="t"><tbody><tr class="strong"><td class="l">Total passif</td><td class="num">${n0(TP.h)}</td><td class="num">${n0(TP.t)}</td></tr></tbody></table></div></div><div class="card"><p style="margin:0">${Math.abs(TA.h-TP.h)<1?'<span class="chip good">Bilan équilibré</span>':'<span class="chip warn">Écart de '+e0(TA.h-TP.h)+'</span>'} Les montants du bilan sont les mêmes en HT et en TTC : il décrit des soldes. Les écritures de clôture (stocks, charges constatées d'avance, provisions) ne sont pas incluses.</p></div>`}
+
+/* ===== GROUPE ===== */
+function viewGroupe(){const y=S.settings.year;const R=W.companies.map(c=>withCo(c,()=>{const s=yearStats(y),T=treasury(y),rw=runway();return{c,name:S.settings.name,prof:PROFILES[S.profile],s,T,rw,al:alerts().filter(a=>a.l==='bad').length}}));
+const tot=k=>R.reduce((a,r)=>padd(a,r.s[k]),P()),bH=Array(12).fill(0).map((_,i)=>sum(R.map(r=>r.T.bH[i]))),bT=Array(12).fill(0).map((_,i)=>sum(R.map(r=>r.T.bT[i])));
+let h=head('Vue groupe','Vos '+W.companies.length+' entreprises côte à côte et consolidées, exercice '+y+'.');
+h+=`<div class="grid">${kpi('Chiffre d\'affaires consolidé',tot('ca'))}${kpi('Résultat net consolidé',tot('rn'))}${kpi('CAF consolidée',tot('caf'))}${kpi('Trésorerie consolidée fin d\'année',P(bH[11],bT[11]))}</div>`;
+h+=`<div class="card"><h2>Entreprise par entreprise</h2><div class="scroll"><table class="t"><thead><tr><th class="l">Entreprise</th><th>CA</th><th>Résultat net</th><th>CAF</th><th>Trésorerie fin</th><th>Alertes urgentes</th><th></th></tr></thead><tbody>${R.map(r=>`<tr><td class="l"><b>${esc(r.name)}</b><br><span class="note" style="margin:0">${r.prof}</span></td><td>${dual(r.s.ca)}</td><td>${dual(r.s.rn)}</td><td>${dual(r.s.caf)}</td><td>${dual(P(r.T.bH[11],r.T.bT[11]))}</td><td>${r.al?`<span class="chip bad">${r.al}</span>`:'<span class="chip good">aucune</span>'}</td><td><button data-act="goto-co" data-id="${r.c.id}">Ouvrir</button></td></tr>`).join('')}<tr class="strong"><td class="l">Total groupe</td><td>${dual(tot('ca'))}</td><td>${dual(tot('rn'))}</td><td>${dual(tot('caf'))}</td><td>${dual(P(bH[11],bT[11]))}</td><td></td><td></td></tr></tbody></table></div></div>
+<div class="card"><h2>Trésorerie consolidée ${y}</h2><div class="legend"><span><b style="background:var(--ht)"></b>HT</span><span><b style="background:var(--ttc)"></b>TTC</span></div>${lineChart([{v:bH,c:'var(--ht)'},{v:bT,c:'var(--ttc)'}],MONTHS)}</div>`;
+return h}
+EXT['goto-co']=b=>{W.active=b.dataset.id;S=curCo().data;ver++;tab='accueil';location.hash='accueil';return(render(),false)};
+
+/* ===== ACCUEIL PAR PROFIL ===== */
+function profileCard(){const y=S.settings.year;
+if(S.profile==='ux'){const dd=docsDays(y),f=S.fl,jb=Math.round(Math.max(1,365-104-num(f.feries??8)-num(f.conges??25))*(1-num(f.nonfact??20)/100)),s=yearStats(y),kv=ratio(s.ca,1.2),T=tiersStats(y,true),ks=Object.keys(T),top=ks.sort((a,b)=>T[b].t.h-T[a].t.h)[0],sh=top&&s.ca.h>0?T[top].t.h/s.ca.h*100:0;
+return `<div class="card"><h2>Votre activité de freelance</h2><div class="grid">${kpi('TJM moyen réalisé',dd.d>0?P(dd.h/dd.d,dd.h/dd.d*kv):P(num(f.tjm),num(f.tjm)*kv),dd.d>0?n0(dd.d)+' jours facturés':'TJM de référence')}<div class="kpi"><div class="kl">Taux d'occupation</div><div class="kv"><span class="h">${n0(dd.d/jb*100)} %</span></div><div class="ks">Sur ${jb} jours facturables</div></div><div class="kpi"><div class="kl">Premier client</div><div class="kv"><span class="h">${top?n0(sh)+' %':'-'}</span></div><div class="ks">${top?esc(top)+(sh>40?' : dépendance élevée':''):'Renseignez vos clients'}</div></div></div></div>`}
+if(S.profile==='game'){const rw=runway(),jj=S.games.reduce((a,g)=>a+Math.max(0,num(g.avance)-gameStats(g).revNet),0),cj=S.games.reduce((a,g)=>a+CIJV_RATE*Math.min(gameStats(g).elig*num(g.cijvPart)/100,CIJV_CAP),0);
+return `<div class="card"><h2>Votre studio</h2><div class="grid"><div class="kpi"><div class="kl">Runway</div><div class="kv"><span class="h">${isFinite(rw.months)?n2(rw.months)+' mois':'Rentable'}</span></div><div class="ks">Burn net : ${e0(rw.burn)} par mois</div></div>${kpi('CIJV estimé (tous jeux)',P(cj,cj),'Crédit d\'impôt jeu vidéo à 30 %')}${kpi('Avances éditeur à recouper',P(jj,jj))}</div></div>`}
+return ''}
+function profileAlerts(A){const y=S.settings.year;
+if(S.profile==='ux'||S.profile==='gen'){const s=yearStats(y),T=tiersStats(y,true),ks=Object.keys(T);if(s.ca.h>0&&ks.length>1){const top=ks.sort((a,b)=>T[b].t.h-T[a].t.h)[0],sh=T[top].t.h/s.ca.h;if(sh>0.4)A.push({l:'warn',m:'Un seul client représente '+n0(sh*100)+' % de votre chiffre d\'affaires : '+top+'. Diversifiez pour limiter le risque.'})}
+if(S.profile==='ux'){const pl=num(S.fl.plafond??83600);if(S.fl.statut==='micro'&&s.ca.h>0.85*pl)A.push({l:'warn',m:'Chiffre d\'affaires à '+n0(s.ca.h/pl*100)+' % du plafond de la micro-entreprise ('+e0(pl)+' HT).'});if(S.settings.tvaRegime==='franchise'&&s.ca.h>37500)A.push({l:'bad',m:'Seuil de franchise de TVA (37 500 € HT) dépassé : passez au régime réel.'})}}
+if(S.profile==='game'){const rw=runway();if(isFinite(rw.months)&&rw.months<6)A.push({l:'bad',m:'Runway de '+n2(rw.months)+' mois : cherchez un financement ou réduisez les dépenses.'});else if(isFinite(rw.months)&&rw.months<12)A.push({l:'warn',m:'Runway de '+n2(rw.months)+' mois : anticipez le prochain jalon ou la levée.'});
+S.miles.forEach(m=>{if(m.status==='prévu'&&m.date<todayISO)A.push({l:'warn',m:'Jalon éditeur « '+m.label+' » ('+m.game+') daté du '+fdate(m.date)+' non facturé.'})});S.games.forEach(g=>{const st=gameStats(g);if(num(g.budget)>0&&st.cost.h>num(g.budget)*1.05)A.push({l:'bad',m:g.name+' : coûts prévus ('+e0(st.cost.h)+') au-dessus du budget ('+e0(num(g.budget))+').'})})}}
+
+/* ===== BUDGET PAR CATÉGORIE ===== */
+function catBudgetCard(y){const real={};S.entries.forEach(e=>{if(+e.date.slice(0,4)===y&&e.kind!=='vente')real[e.cat]=padd(real[e.cat]||P(),P(e.ht,tt(e)))});const ks=[...new Set([...Object.keys(real),...Object.keys(S.catBudget||{})])].sort();
+return `<div class="card"><h2>Budget par catégorie de dépenses ${y}</h2><div class="scroll"><table class="t"><thead><tr><th class="l">Catégorie</th><th>Budget annuel HT (€)</th><th>Réalisé et prévu</th><th>Consommé</th></tr></thead><tbody>${ks.map(k=>{const b=num((S.catBudget||{})[k]),r=real[k]||P(),pc=b>0?r.h/b*100:0;return `<tr><td class="l">${k} · ${esc(catOf(k)?.n||'')}</td><td><input type="text" inputmode="decimal" data-bind="catBudget.${k}" data-num="1" value="${esc((S.catBudget||{})[k]??'')}" style="width:110px"></td><td>${dual(r)}</td><td class="num">${b>0?n0(pc)+' %'+(pc>100?' <span class="chip bad">dépassé</span>':''):'-'}</td></tr>`}).join('')||'<tr><td colspan="4" class="l" style="color:var(--muted)">Aucune dépense.</td></tr>'}</tbody></table></div></div>`}
+
+/* ===== NAVIGATION ===== */
+const TABS=[['accueil','Accueil',viewAccueil,'Pilotage'],['groupe','Vue groupe',viewGroupe,'Pilotage'],
+['compta','Comptabilité auto',viewCompta,'Comptabilité'],['facturation','Facturation',viewFact,'Comptabilité'],['clients','Clients et fournisseurs',viewClients,'Comptabilité'],['rapprochement','Rapprochement',viewRapp,'Comptabilité'],['calendrier','Échéances fiscales',viewCal,'Comptabilité'],['bilan','Bilan',viewBilan,'Comptabilité'],['cloture','Clôture et contrôles',viewClo,'Comptabilité'],
+['seuil','Seuil de rentabilité',viewSR,'Prévisions'],['tresorerie','Trésorerie',viewTre,'Prévisions'],['financement','Plan de financement',viewFin,'Prévisions'],['amortissement','Amortissements',viewAmo,'Prévisions'],['caf','CAF',viewCaf,'Prévisions'],['besoins','Besoins',viewBes,'Prévisions'],['objectif','Objectif de vente',viewObj,'Prévisions'],['previsionnel','Prévu et réalisé',viewPrev,'Prévisions'],['scenarios','Scénarios',viewScen,'Prévisions'],
+['freelance','Statut, TJM et seuils',viewFreelance,'Freelance UI/UX','ux'],['jeux','Jeux et CIJV',viewJeux,'Studio','game'],['equipe','Équipe et runway',viewEquipe,'Studio','game'],
+['parametres','Paramètres',viewPar,'Réglages']];
+function render(){const vt=TABS.filter(t=>!t[4]||t[4]===S.profile);if(!vt.find(t=>t[0]===tab))tab='accueil';const ys=[];for(let y=2024;y<=2034;y++)ys.push(y);
+$('#yearSel').innerHTML=ys.map(y=>`<option${y===S.settings.year?' selected':''}>${y}</option>`).join('');$('#coName').value=S.settings.name;
+$('#coSel').innerHTML=W.companies.map(c=>`<option value="${c.id}"${c.id===W.active?' selected':''}>${esc(c.data.settings.name)}</option>`).join('');$('#coSel').hidden=W.companies.length<2;
+$('#scenSel').innerHTML=[['reel','Scénario : réel'],...Object.keys(S.scen.list).map(k=>[k,'Scénario : '+k])].map(([k,l])=>`<option value="${esc(k)}"${k===S.scen.cur?' selected':''}>${esc(l)}</option>`).join('');
+let g='',nv='';vt.forEach(t=>{if(t[3]!==g){g=t[3];nv+=`<div class="ng">${g}</div>`}nv+=`<a href="#${t[0]}" class="${t[0]===tab?'on':''}">${t[1]}</a>`});$('#nav').innerHTML=nv;
+try{$('#view').innerHTML=vt.find(t=>t[0]===tab)[2]()}catch(e){$('#view').innerHTML='<div class="card">Une erreur est survenue dans ce module : '+esc(e.message)+'</div>';console.error(e)}}
+window.addEventListener('hashchange',()=>{tab=location.hash.slice(1)||'accueil';render();scrollTo(0,0)});
+
+/* ===== PARAMÈTRES : ENTREPRISES, MENTIONS LÉGALES, RESTAURATION ===== */
+drafts.co={name:'',profile:'ux'};
+function viewPar(){const b=viewParBase(),L=S.legal,lf=(l,k,w)=>fld(l,`<input type="text" data-bind="legal.${k}" value="${esc(L[k]||'')}">`,w||'f');
+const extra=`<div class="card"><h2>Entreprises (${W.companies.length})</h2>${W.companies.map(c=>`<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><span><b>${esc(c.data.settings.name)}</b> · ${PROFILES[c.data.profile]}${c.id===W.active?' <span class="chip good">active</span>':''}</span><span>${c.id!==W.active?`<button class="lnk" data-act="goto-co" data-id="${c.id}">Ouvrir</button>`:''}${W.companies.length>1?`<button class="lnk danger" data-act="del-co" data-id="${c.id}">Supprimer</button>`:''}</span></div>`).join('')}
+<div class="row" style="margin-top:10px">${fld('Nouvelle entreprise',inp('co.name',drafts.co.name,'placeholder="Nom"'),'f2')}${fld('Activité',sel('co.profile',Object.entries(PROFILES),drafts.co.profile))}<button class="pri" data-act="add-co">Ajouter</button></div></div>
+<div class="card"><h2>Informations légales (factures et devis)</h2><div class="row">${lf('Raison sociale','raison','f2')}${lf('Forme juridique','forme')}${lf('SIRET','siret')}${lf('N° de TVA','tva')}</div><div class="row" style="margin-top:10px">${lf('Adresse','adresse','f2')}${lf('Email','email')}${lf('IBAN','iban','f2')}${lf('BIC','bic')}</div></div>`;
+return b.replace('</p></div>','</p></div>'+extra)+`<div class="card"><h2>Restaurer une sauvegarde</h2><div class="field f2"><label>Fichier JSON téléchargé depuis cette application</label><input type="file" accept=".json" data-ext="json-file"></div></div>`}
+EXT['add-co']=()=>{const d=drafts.co;if(!d.name.trim()){toast('Donnez un nom à l\'entreprise.');return false}const c={id:uid(),data:emptyFor(d.profile,d.name.trim())};W.companies.push(c);d.name='';W.active=c.id;S=c.data;ver++;toast('Entreprise créée.')};
+EXT['del-co']=b=>{if(!b.dataset.ok){b.dataset.ok=1;b.textContent='Confirmer';return false}snapshot('Avant suppression d\'une entreprise');W.companies=W.companies.filter(c=>c.id!==b.dataset.id);if(W.active===b.dataset.id)W.active=W.companies[0].id;S=curCo().data;ver++};
+EXT['export-json']=()=>{if(!dl){toast('Téléchargement indisponible ici.');return false}dl.save({filename:'compta-pilote-sauvegarde.json',data:JSON.stringify(W,null,2)}).catch(()=>{});return false};
+document.addEventListener('change',async e=>{const t=e.target,x=t.dataset.ext;
+if(x==='co'){switchCo(t.value)}
+else if(x==='json-file'){const f=t.files[0];if(!f)return;try{snapshot('Avant restauration d\'un fichier');setW(normW(JSON.parse(await f.text())));save();render();toast('Sauvegarde restaurée.')}catch(err){toast('Fichier illisible.')}}
+else if(t.dataset.draft==='mem.type'){render()}});
+document.addEventListener('input',e=>{const t=e.target;if(t.dataset.ext==='q'){ui.q=t.value.toLowerCase();const p=t.selectionStart;render();const n=$('#q');if(n){n.focus();n.setSelectionRange(p,p)}}});
 /* ===== compression et démarrage ===== */
 async function pack(o){const json=JSON.stringify(o);if(typeof CompressionStream==='undefined')return{v:1,json};
 try{const cs=new CompressionStream('gzip'),w=cs.writable.getWriter();w.write(new TextEncoder().encode(json));w.close();const buf=new Uint8Array(await new Response(cs.readable).arrayBuffer());let b='';for(let i=0;i<buf.length;i+=8192)b+=String.fromCharCode.apply(null,buf.subarray(i,i+8192));return{v:1,z:btoa(b)}}catch(e){return{v:1,json}}}
 async function unpack(d){if(d.z){const bin=atob(d.z),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);const ds=new DecompressionStream('gzip'),w=ds.writable.getWriter();w.write(u);w.close();return JSON.parse(await new Response(ds.readable).text())}
 if(d.json)return JSON.parse(d.json);if(typeof d.data==='string')return JSON.parse(d.data);return d}
 document.addEventListener('change',async e=>{const t=e.target,x=t.dataset.ext,k=t.dataset.dr2;
-if(k){const d=drafts.tpl;if(k==='tpl.kind'){d.kind=t.value;const c=CATS.find(q=>q.k===d.kind);d.cat=c.a;d.rate=c.r;render()}return}
+if(k){const d=drafts.tpl;if(k==='tpl.kind'){d.kind=t.value;const c=catsFor(d.kind)[0];d.cat=c.a;d.rate=c.r;render()}return}
 if(!x)return;
 if(x==='scen'){S.scen.cur=t.value;save();render()}
 else if(x==='scenp'){const p=S.scen.list[t.dataset.n];if(p){p[t.dataset.k]=num(t.value);save();render()}}
@@ -692,18 +987,18 @@ else if(x==='bank-file'){const f=t.files[0];if(f){ui.impText=await f.text();ui.i
 else if(x==='att'){const f=t.files[0];if(!f||!ASSETS)return;try{const r=await ASSETS.upload(f);drafts.entry.att={id:r.id,url:r.url,name:f.name};render()}catch(err){toast('Envoi impossible (droits d\'édition requis).')}}});
 document.addEventListener('input',e=>{if(e.target.dataset.ext==='imp-text')ui.impText=e.target.value});
 let rawLocal=null;
-try{rawLocal=localStorage.getItem(KEY);S=rawLocal?norm(JSON.parse(rawLocal)):demoState()}catch(e){S=demoState()}
+try{rawLocal=localStorage.getItem(KEY);setW(rawLocal?normW(JSON.parse(rawLocal)):demoW())}catch(e){setW(demoW())}
 render();
 (async()=>{try{const c=window.claude;if(!c)return;
 const [db,user,d,as]=await Promise.all([c.use('db'),c.use('user'),c.use('downloads'),c.use('assets')]);dl=d||null;ASSETS=as||null;
 const id=user?await user.id():null,ed=user?await user.canEdit():false;RO=false;
-if(db&&id){DB=db;const shared=db.doc('ledger/main');let snap=await shared.get();
-if(snap.exists){S=norm(await unpack(snap.data()))}
-else if(ed){const old=await db.collection('data/users/'+id).doc('compta').get();if(old.exists)S=norm(await unpack(old.data()));if(old.exists||(rawLocal&&!S.demo))save()}
+if(db&&id){DB=db;const shared=db.doc('ledger/main');const snap=await shared.get();
+if(snap.exists){const raw=await unpack(snap.data());setW(normW(raw));if(ed&&!raw.companies)save()}
+else if(ed){const old=await db.collection('data/users/'+id).doc('compta').get();if(old.exists)setW(normW(await unpack(old.data())));if(old.exists||(rawLocal&&!JSON.parse(rawLocal).demo))save()}
 if(ed){dbDoc=shared;setSave('Enregistré sur votre compte')}
-else{RO=true;setSave('Lecture seule');shared.onSnapshot(async s=>{if(s.exists&&!s.metadata.hasPendingWrites){S=norm(await unpack(s.data()));render()}},()=>{})}
+else{RO=true;setSave('Lecture seule');shared.onSnapshot(async s=>{if(s.exists&&!s.metadata.hasPendingWrites){setW(normW(await unpack(s.data())));render()}},()=>{})}
 render()}
-else{if(ed&&!id){}setSave(localStorage.getItem(KEY)?'Enregistré sur cet appareil':'')}}catch(e){console.error(e)}})();
+else setSave(localStorage.getItem(KEY)?'Enregistré sur cet appareil':'')}catch(e){console.error(e)}})();
 })();
 </script>
 
