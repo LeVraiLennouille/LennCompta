@@ -90,7 +90,7 @@ svg .ax{fill:var(--muted);font:11px var(--mono)}
 <span class="spacer"></span>
 <span class="tag h">HT</span><span class="tag t">TTC</span>
 <div class="field" style="flex-direction:row;align-items:center;gap:6px"><label for="yearSel">Exercice</label><select id="yearSel" data-bind="settings.year" data-num="1" style="width:auto"></select></div>
-<span class="save" id="saveSt"></span>
+<select id="scenSel" aria-label="Scénario" data-ext="scen" style="width:auto"></select><button data-act="export-xlsx">Excel</button><button data-act="export-pdf">PDF</button><span class="save" id="saveSt"></span>
 </header>
 <div class="shell"><nav id="nav" aria-label="Modules"></nav><main id="view"></main></div>
 </div>
@@ -132,7 +132,7 @@ const accName=a=>ACC[a]||catOf(a)?.n||(a.startsWith('28')?'Amortissements':a);
 const RATES=[20,10,5.5,2.1,0];
 
 /* état */
-function emptyState(){return{settings:{name:'Mon entreprise',year:new Date().getFullYear(),opening:0,tax:'is',dc:30,df:30,stock:0,days:220},entries:[],loans:[],equity:[],needs:[],sr:{ca:'',cv:'',cf:'',price:''},goal:{result:30000,basket:'',},demo:false}}
+function emptyState(){return{settings:{name:'Mon entreprise',year:new Date().getFullYear(),opening:0,tax:'is',dc:30,df:30,stock:0,days:220,tvaRegime:'mensuel',tvaBasis:'mixte',cashAlert:2000,first:''},entries:[],loans:[],equity:[],needs:[],sr:{ca:'',cv:'',cf:'',price:''},goal:{result:30000,basket:'',},demo:false,scen:{cur:'reel',list:{prudent:{ca:-15,delay:15},ambitieux:{ca:15,delay:0}}},rules:[],tpl:[],budget:null,closing:{},locked:{}}}
 function demoState(){
 const s=emptyState();s.demo=true;s.settings.name='Mon entreprise (exemple)';s.settings.year=2026;s.settings.stock=20;s.settings.opening=0;s.goal.basket=180;s.sr.price=180;
 const add=(o)=>s.entries.push(Object.assign({id:uid(),delay:0,rate:20,dur:3,mode:'lin'},o));
@@ -157,8 +157,9 @@ s.loans.push({id:uid(),label:'Prêt bancaire (exemple)',amount:25000,rate:4.2,mo
 s.equity.push({id:uid(),label:'Apport en capital',type:'apport',amount:15000,date:'2026-01-02'});
 s.equity.push({id:uid(),label:'Subvention régionale',type:'subvention',amount:3000,date:'2026-06-15'});
 s.needs.push({id:uid(),label:'Frais d\'établissement',ht:900,rate:20},{id:uid(),label:'Dépôt de garantie du local',ht:1700,rate:0},{id:uid(),label:'Stock initial',ht:4000,rate:20});
+s.entries.forEach(e=>{e.act={'706':'Services','611':'Services','707':'Boutique','607':'Boutique'}[e.cat]||''});
 return s}
-let S=emptyState(),tab=location.hash.slice(1)||'compta',ui={sub:'saisie',kf:'all',dirty:false};
+let S=emptyState(),tab=location.hash.slice(1)||'accueil',ui={sub:'saisie',kf:'all',dirty:false};
 const drafts={entry:{date:todayISO,kind:'vente',cat:'706',label:'',ht:'',rate:20,ttc:'',delay:0,dur:3,mode:'lin',rep:1},loan:{label:'',amount:'',rate:'',months:60,start:todayISO,deferred:0},eq:{label:'',type:'apport',amount:'',date:todayISO},need:{label:'',ht:'',rate:20}};
 
 /* calculs */
@@ -172,31 +173,22 @@ function sched(l){const r=l.rate/1200,n=Math.max(1,l.months),d=Math.min(l.deferr
 for(let i=1;i<=n;i++){const it=rest*r;let c=i<=d?0:(i===n?rest:pmt-it);rest-=c;rows.push({date:addMonths(l.start,i),interest:it,capital:c,rest:Math.max(0,rest)})}return rows}
 function loanYear(y){const o={cap:0,int:0,in:0};S.loans.forEach(l=>{if(+l.start.slice(0,4)===y)o.in+=l.amount;sched(l).forEach(r=>{if(+r.date.slice(0,4)===y){o.cap+=r.capital;o.int+=r.interest}})});return o}
 const eqYear=y=>S.equity.filter(q=>+q.date.slice(0,4)===y).reduce((a,q)=>a+q.amount,0);
-const tt=e=>e.ht*(1+e.rate/100);
+const tt=e=>(S.settings.tvaRegime==='franchise'&&e.kind==='vente')?e.ht:e.ht*(1+e.rate/100);
 function yearStats(y){const s={ca:P(),cv:P(),cf:P(),imm:P()};
-S.entries.forEach(e=>{if(+e.date.slice(0,4)!==y)return;const p=P(e.ht,tt(e));const k={vente:'ca',varia:'cv',fixe:'cf',immo:'imm'}[e.kind];s[k]=padd(s[k],p)});
-s.dot=dotYear(y);const li=loanYear(y);s.int=P(li.int,li.int);
+E().forEach(e=>{if(+e.date.slice(0,4)!==y)return;const p=P(e.ht,tt(e));const k={vente:'ca',varia:'cv',fixe:'cf',immo:'imm'}[e.kind];s[k]=padd(s[k],p)});
+const cl=S.closing[y]||{},aS=num(cl.stockStart)-num(cl.stockEnd),aC=num(cl.prov)-num(cl.cca);s.cv=padd(s.cv,P(aS,aS));s.cf=padd(s.cf,P(aC,aC));s.adj={stock:aS,cf:aC};s.dot=dotYear(y);const li=loanYear(y);s.int=P(li.int,li.int);
 s.marge=psub(s.ca,s.cv);s.ebe=psub(s.marge,s.cf);s.rex=psub(s.ebe,s.dot);s.rcai=psub(s.rex,s.int);
 const b=s.rcai.h;let is=0;if(S.settings.tax==='is'&&b>0)is=0.15*Math.min(b,42500)+0.25*Math.max(0,b-42500);
 s.is=P(is,is);s.rn=psub(s.rcai,s.is);s.caf=padd(s.rn,s.dot);s.caf2=psub(psub(s.ebe,s.int),s.is);s.loan=li;return s}
-function bfrCalc(y){const s=yearStats(y),st=S.settings;const stock=pmul(s.cv,st.stock/360),cre=pmul(s.ca,st.dc/360),det=pmul(padd(s.cv,s.cf),st.df/360);return{stock,cre,det,bfr:psub(padd(stock,cre),det)}}
+function bfrCalc(y){const s=yearStats(y),st=S.settings;const stock=pmul(s.cv,st.stock/360),cre=pmul(s.ca,st.dc/360),det=pmul(supBase(y),st.df/360);return{stock,cre,det,bfr:psub(padd(stock,cre),det)}}
 const needsTotal=()=>S.needs.reduce((a,n)=>padd(a,P(n.ht,n.ht*(1+n.rate/100))),P());
-function treasury(y){const Z=()=>Array(12).fill(0);
-const R={vH:Z(),vV:Z(),eq:Z(),li:Z(),cvH:Z(),cvV:Z(),cfH:Z(),cfV:Z(),imH:Z(),imV:Z(),cap:Z(),int:Z(),pay:Z()};
-S.entries.forEach(e=>{const cd=addDays(e.date,e.delay||0),[yy,mm]=dparts(cd);if(yy!==y)return;const i=mm-1,v=e.ht*e.rate/100;
-const m={vente:['vH','vV'],varia:['cvH','cvV'],fixe:['cfH','cfV'],immo:['imH','imV']}[e.kind];R[m[0]][i]+=e.ht;R[m[1]][i]+=v});
-S.equity.forEach(q=>{const [yy,mm]=dparts(q.date);if(yy===y)R.eq[mm-1]+=q.amount});
-S.loans.forEach(l=>{const [yy,mm]=dparts(l.start);if(yy===y)R.li[mm-1]+=l.amount;sched(l).forEach(r=>{const [a,b]=dparts(r.date);if(a===y){R.cap[b-1]+=r.capital;R.int[b-1]+=r.interest}})});
-let carry=0,due=0;for(let m=0;m<12;m++){const bal=carry+R.vV[m]-(R.cvV[m]+R.cfV[m]+R.imV[m]);if(m<11){if(bal>0){R.pay[m+1]=bal;carry=0}else carry=bal}else due=Math.max(0,bal)}
-R.due=due;return R}
-const sum=a=>a.reduce((x,y)=>x+y,0);
 /* persistance : compte privé (db) sinon cet appareil */
 const KEY='compta-pilote-v1';let dbDoc=null,dl=null,saveT=null,saving=false;
 const setSave=t=>{$('#saveSt').textContent=t};
-function save(){ui.dirty=true;setSave('Enregistrement…');try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+function save(){ver++;if(RO){setSave('Lecture seule : non enregistré');return}ui.dirty=true;setSave('Enregistrement…');try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
 clearTimeout(saveT);saveT=setTimeout(flush,700)}
 async function flush(){if(!dbDoc){setSave('Enregistré sur cet appareil');return}if(saving){saveT=setTimeout(flush,400);return}saving=true;
-try{await dbDoc.set(JSON.parse(JSON.stringify(S)));setSave('Enregistré sur votre compte (privé)')}catch(e){setSave('Enregistré sur cet appareil')}saving=false}
+try{autoSnap();await dbDoc.set(await pack(S));setSave('Enregistré sur votre compte')}catch(e){setSave('Enregistré sur cet appareil')}saving=false}
 function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>t.hidden=true,2600)}
 
 /* briques d'affichage */
@@ -221,7 +213,7 @@ return `<svg class="ch" viewBox="0 0 ${w} ${h}" role="img" aria-label="Graphique
 
 /* ===== COMPTABILITÉ AUTOMATIQUE ===== */
 function journal(y){const L=[];const push=(date,j,a,label,d,c)=>{if(+date.slice(0,4)===y&&(Math.abs(d)>0.004||Math.abs(c)>0.004))L.push({date,j,a,label,d,c})};
-S.entries.forEach(e=>{const v=e.ht*e.rate/100,T=e.ht+v,pay=addDays(e.date,e.delay||0);
+S.entries.forEach(e=>{const v=e.ht*e.rate/100,T=e.ht+v,pay=e.paid||addDays(e.date,e.delay||0);
 if(e.kind==='vente'){push(e.date,'VT','411',e.label,T,0);push(e.date,'VT',e.cat,e.label,0,e.ht);push(e.date,'VT','44571','TVA '+e.rate+' % – '+e.label,0,v);push(pay,'BQ','512',e.label,T,0);push(pay,'BQ','411',e.label,0,T)}
 else{const tier=e.kind==='immo'?'404':'401',tv=e.kind==='immo'?'44562':'44566';push(e.date,'AC',e.cat,e.label,e.ht,0);push(e.date,'AC',tv,'TVA '+e.rate+' % – '+e.label,v,0);push(e.date,'AC',tier,e.label,0,T);push(pay,'BQ',tier,e.label,T,0);push(pay,'BQ','512',e.label,0,T)}});
 S.loans.forEach(l=>{push(l.start,'BQ','512',l.label,l.amount,0);push(l.start,'BQ','164',l.label,0,l.amount);sched(l).forEach(r=>{push(r.date,'BQ','164',l.label+' – capital',r.capital,0);push(r.date,'BQ','661',l.label+' – intérêts',r.interest,0);push(r.date,'BQ','512',l.label+' – échéance',0,r.capital+r.interest)})});
@@ -232,9 +224,9 @@ return L.sort((a,b)=>a.date.localeCompare(b.date)||a.j.localeCompare(b.j))}
 function viewCompta(){const y=S.settings.year,d=drafts.entry,sub=ui.sub;
 let h=head('Comptabilité automatique','Saisissez une pièce : le journal, la TVA, la balance et le compte de résultat se génèrent seuls. Chaque montant est tenu en HT et en TTC.');
 if(S.demo)h+=`<div class="banner"><span>Données d'exemple affichées. Remplacez-les par les vôtres.</span><button data-act="clear-demo">Effacer les exemples et repartir de zéro</button></div>`;
-h+=`<div class="sub">${[['saisie','Saisie des pièces'],['journal','Journal'],['balance','Balance'],['resultat','Résultat et TVA']].map(([k,l])=>`<button data-act="sub" data-v="${k}" class="${sub===k?'on':''}">${l}</button>`).join('')}</div>`;
+h+=`<div class="sub">${[['saisie','Saisie des pièces'],['import','Import bancaire'],['modeles','Modèles récurrents'],['journal','Journal'],['balance','Balance'],['resultat','Résultat et TVA']].map(([k,l])=>`<button data-act="sub" data-v="${k}" class="${sub===k?'on':''}">${l}</button>`).join('')}</div>`;
 if(sub==='saisie')h+=entryForm(d)+entryList(y);
-if(sub==='journal')h+=viewJournal(y);
+if(sub==='import')h+=viewImport();if(sub==='modeles')h+=viewTpl();if(sub==='journal')h+=viewJournal(y);
 if(sub==='balance')h+=viewBalance(y);
 if(sub==='resultat')h+=viewResultat(y);
 return h}
@@ -244,6 +236,7 @@ ${fld('Date',`<input type="date" data-draft="date" value="${d.date}">`)}
 ${fld('Type',`<select data-dr="kind">${Object.entries(KINDS).map(([k,l])=>`<option value="${k}"${d.kind===k?' selected':''}>${l}</option>`).join('')}</select>`)}
 ${fld('Catégorie (compte)',sel('cat',cats,d.cat,'data-dr="cat"'),'f2')}
 ${fld('Libellé',`<input type="text" data-draft="label" value="${esc(d.label)}" placeholder="Ex. Facture client Dupont">`,'f2')}
+${fld('Activité',`<input type="text" data-draft="act" list="acts" value="${esc(d.act||'')}" placeholder="Facultatif"><datalist id="acts">${actNames().map(a=>`<option value="${esc(a)}">`).join('')}</datalist>`)}
 </div><div class="row" style="margin-top:12px">
 ${fld('Montant HT (€)',inp('ht',d.ht,'id="f-ht" class="h"'))}
 ${fld('Taux de TVA',sel('rate',rateOpts,d.rate))}
@@ -251,13 +244,16 @@ ${fld('Montant TTC (€)',inp('ttc',d.ttc,'id="f-ttc" class="t"'))}
 ${fld('Règlement après',sel('delay',[0,15,30,45,60,90].map(x=>[x,x?x+' jours':'comptant']),d.delay))}
 ${d.kind==='immo'?fld('Durée (ans)',inp('dur',d.dur))+fld('Mode',sel('mode',[['lin','Linéaire'],['deg','Dégressif']],d.mode)):''}
 ${ed?'':fld('Répéter (mois)',inp('rep',d.rep))}
+${fld('Réglé le (facultatif)',`<input type="date" data-draft="paid" value="${d.paid||''}">`)}
+${d.cat==='641'&&!ed?fld('Charges patronales auto (%)',inp('soc',d.soc||'')):''}
+${ASSETS?fld('Pièce jointe',`<input type="file" id="f-att" data-ext="att">${d.att?`<a href="${esc(d.att.url)}" target="_blank" rel="noopener">${esc(d.att.name)}</a>`:''}`,'f2'):''}
 <div class="field" style="flex:0 0 auto"><label>&nbsp;</label><div style="display:flex;gap:6px"><button class="pri" data-act="add-entry">${ed?'Enregistrer':'Ajouter'}</button>${ed?'<button data-act="cancel-edit">Annuler</button>':''}</div></div>
 </div><p class="note">Saisissez le HT ou le TTC : l'autre montant se calcule. « Répéter » crée la même pièce chaque mois (utile pour un prévisionnel).</p></div>`}
 function entryList(y){const f=ui.kf;let L=S.entries.filter(e=>+e.date.slice(0,4)===y&&(f==='all'||e.kind===f)).sort((a,b)=>b.date.localeCompare(a.date));
 const tot=L.reduce((a,e)=>padd(a,P(e.ht,tt(e))),P());
 return `<div class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Pièces de ${y} (${L.length})</h2><div class="sub">${[['all','Toutes'],...Object.entries(KINDS)].map(([k,l])=>`<button data-act="kf" data-v="${k}" class="${f===k?'on':''}">${l}</button>`).join('')}</div></div>
 <div class="scroll"><table class="t" style="margin-top:8px"><thead><tr><th>Date</th><th class="l">Libellé</th><th class="l">Compte</th><th>HT</th><th>TVA</th><th>TTC</th><th>Règlement</th><th></th></tr></thead><tbody>
-${L.map(e=>`<tr><td class="l num">${fdate(e.date)}</td><td class="l">${esc(e.label)} <span class="chip">${KINDS[e.kind]}</span></td><td class="l num">${e.cat}</td><td class="num" style="color:var(--ht)">${n2(e.ht)}</td><td class="num">${n2(e.ht*e.rate/100)} <span class="chip">${e.rate}%</span></td><td class="num" style="color:var(--ttc)">${n2(tt(e))}</td><td class="num">${fdate(addDays(e.date,e.delay||0))}</td><td><button class="lnk" data-act="edit-entry" data-id="${e.id}">Modifier</button><button class="lnk danger" data-act="del-entry" data-id="${e.id}">Suppr.</button></td></tr>`).join('')||'<tr><td colspan="8" class="l" style="color:var(--muted)">Aucune pièce pour cet exercice. Ajoutez votre première ci-dessus.</td></tr>'}
+${L.map(e=>`<tr><td class="l num">${fdate(e.date)}</td><td class="l">${esc(e.label)} <span class="chip">${KINDS[e.kind]}</span>${e.act?` <span class="chip">${esc(e.act)}</span>`:''}${e.att?` <a href="${esc(e.att.url)}" target="_blank" rel="noopener">PJ</a>`:''}</td><td class="l num">${e.cat}</td><td class="num" style="color:var(--ht)">${n2(e.ht)}</td><td class="num">${n2(e.ht*e.rate/100)} <span class="chip">${e.rate}%</span></td><td class="num" style="color:var(--ttc)">${n2(tt(e))}</td><td class="num">${e.paid?fdate(e.paid)+' <span class="chip good">réglé</span>':fdate(addDays(e.date,e.delay||0))}</td><td><button class="lnk" data-act="edit-entry" data-id="${e.id}">Modifier</button><button class="lnk danger" data-act="del-entry" data-id="${e.id}">Suppr.</button></td></tr>`).join('')||'<tr><td colspan="8" class="l" style="color:var(--muted)">Aucune pièce pour cet exercice. Ajoutez votre première ci-dessus.</td></tr>'}
 </tbody><tfoot><tr class="strong"><td class="l" colspan="3">Total affiché</td><td class="num" style="color:var(--ht)">${n2(tot.h)}</td><td class="num">${n2(tot.t-tot.h)}</td><td class="num" style="color:var(--ttc)">${n2(tot.t)}</td><td colspan="2"></td></tr></tfoot></table></div></div>`}
 function viewJournal(y){const L=journal(y),D=sum(L.map(l=>l.d)),C=sum(L.map(l=>l.c));
 return `<div class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Journal ${y} (généré automatiquement)</h2><button data-act="export-journal">Exporter en CSV</button></div>
@@ -299,7 +295,7 @@ h+=`<div class="grid">${kpi('Seuil de rentabilité (CA)',c.SRp,'Taux de marge su
 h+=`<div class="two"><div class="card"><h2>Point mort</h2><p style="margin:0">${c.caH>0?(days<=365?`Seuil atteint en <b>${days} jours</b>, soit vers le <b>${fdate(dt.toISOString().slice(0,10))}</b>, au rythme prévu.`:`Au rythme prévu, le seuil n'est pas atteint dans l'année (${days} jours).`):'Aucun chiffre d\'affaires prévu.'}</p>${p>0?`<p>Prix unitaire : <b class="num" style="color:var(--ht)">${e2(p)} HT</b> · <b class="num" style="color:var(--ttc)">${e2(pT)} TTC</b><br>À vendre pour atteindre le seuil : <b>${n0(Math.ceil(qty))}</b> unités par an, soit <b>${n0(Math.ceil(qty/12))}</b> par mois.</p>`:''}</div>
 <div class="card"><h2>Détail</h2><table class="t"><thead><tr><th class="l">Poste</th><th>HT</th><th>TTC</th></tr></thead><tbody>${[['Chiffre d\'affaires',c.CA],['Coûts variables',c.CV],['Marge sur coûts variables',marge],['Charges fixes',c.CF],['Résultat prévu',psub(marge,c.CF)]].map(([l,q])=>`<tr><td class="l">${l}</td><td class="num" style="color:var(--ht)">${n0(q.h)}</td><td class="num" style="color:var(--ttc)">${n0(q.t)}</td></tr>`).join('')}</tbody></table></div></div>`;
 h+=`<div class="card"><h2>Graphique du seuil</h2><div class="legend"><span><b style="background:var(--ht)"></b>Chiffre d'affaires</span><span><b style="background:var(--warn)"></b>Coûts totaux</span><span><b style="background:var(--muted)"></b>Charges fixes</span></div>${srChart(c)}</div>`;
-return h}
+h+=actSection(y);return h}
 function srChart(c){const w=760,h=270,pd={l:56,r:16,t:14,b:46};const xm=Math.max(c.caH,c.SR)*1.3,ym=Math.max(xm,c.cfH+c.cvR*xm)*1.05;
 const X=v=>pd.l+(w-pd.l-pd.r)*v/xm,Y=v=>pd.t+(h-pd.t-pd.b)*(1-v/ym);let g='';
 for(let i=0;i<=4;i++){const v=xm*i/4;g+=`<line x1="${X(v)}" x2="${X(v)}" y1="${pd.t}" y2="${h-pd.b}" stroke="var(--line)"/><text class="ax" x="${X(v)}" y="${h-pd.b+14}" text-anchor="middle" style="fill:var(--ht)">${n0(v)}</text><text class="ax" x="${X(v)}" y="${h-pd.b+28}" text-anchor="middle" style="fill:var(--ttc)">${n0(v*c.kv)}</text>`}
@@ -309,29 +305,13 @@ g+=`<line x1="${X(0)}" y1="${Y(0)}" x2="${X(xm)}" y2="${Y(xm)}" stroke="var(--ht
 g+=`<circle cx="${X(c.SR)}" cy="${Y(c.SR)}" r="5" fill="var(--ink)"/><line x1="${X(c.SR)}" x2="${X(c.SR)}" y1="${Y(c.SR)}" y2="${h-pd.b}" stroke="var(--ink)" stroke-dasharray="3 3"/>`;
 return `<svg class="ch" viewBox="0 0 ${w} ${h}" role="img" aria-label="Seuil de rentabilité">${g}</svg>`}
 
-/* ===== TABLEAU DE TRÉSORERIE ===== */
-function viewTre(){const y=S.settings.year,T=treasury(y),op=S.settings.opening;
-const A=(f)=>Array.from({length:12},(_,i)=>f(i));
-const vT=A(i=>T.vH[i]+T.vV[i]),cvT=A(i=>T.cvH[i]+T.cvV[i]),cfT=A(i=>T.cfH[i]+T.cfV[i]),imT=A(i=>T.imH[i]+T.imV[i]);
-const inH=A(i=>T.vH[i]+T.eq[i]+T.li[i]),inT=A(i=>vT[i]+T.eq[i]+T.li[i]);
-const outH=A(i=>T.cvH[i]+T.cfH[i]+T.imH[i]+T.cap[i]+T.int[i]),outT=A(i=>cvT[i]+cfT[i]+imT[i]+T.cap[i]+T.int[i]);
-const nH=A(i=>inH[i]-outH[i]),nT=A(i=>inT[i]-outT[i]-T.pay[i]);
-let a=op,b=op;const bH=nH.map(v=>a+=v),bT=nT.map(v=>b+=v);
-const R=[['Encaissements clients',T.vH,vT],['Apports, comptes courants et subventions',T.eq,T.eq],['Emprunts reçus',T.li,T.li],['Total encaissements',inH,inT,'s'],['Charges variables',T.cvH,cvT],['Charges fixes',T.cfH,cfT],['Investissements',T.imH,imT],['Remboursement d\'emprunts (capital)',T.cap,T.cap],['Intérêts d\'emprunts',T.int,T.int],['Total décaissements',outH,outT,'s'],['TVA reversée à l\'État',Array(12).fill(0),T.pay],['Flux net du mois',nH,nT,'s'],['Trésorerie en fin de mois',bH,bT,'b']];
-const minT=Math.min(...bT),mi=bT.indexOf(minT),minH=bH[bT.indexOf(minT)];
-let h=head('Tableau de trésorerie','Mois par mois, à la date de règlement. Chaque cellule indique le HT (vert) puis le TTC (violet). La trésorerie réelle est la ligne TTC : elle tient compte de la TVA encaissée et reversée.');
-h+=`<div class="grid">${kpi('Trésorerie fin '+y,P(bH[11],bT[11]),'Départ : '+e0(op))}${kpi('Point le plus bas ('+MONTHS[mi]+')',P(minH,minT),minT<0?'<span class="chip bad">Trésorerie négative</span>':'<span class="chip good">Toujours positive</span>')}<div class="kpi"><div class="kl">TVA à reverser en janvier ${y+1}</div><div class="kv"><span class="t">${e0(T.due)}</span></div></div></div>`;
-h+=`<div class="card"><div class="legend"><span><b style="background:var(--ht)"></b>Solde HT</span><span><b style="background:var(--ttc)"></b>Solde TTC (réel)</span></div>${lineChart([{v:bH,c:'var(--ht)'},{v:bT,c:'var(--ttc)'}],MONTHS)}</div>`;
-h+=`<div class="card"><div class="scroll"><table class="t wide"><thead><tr><th class="l">Montants en €</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total</th></tr></thead><tbody>`+R.map(([l,hh,tv,st])=>`<tr class="${st?'strong':''}"><td class="l">${l}${tags}</td>${hh.map((x,i)=>`<td class="${st&&(tv[i]<0||x<0)?'neg':''}">${dual(P(x,tv[i]))}</td>`).join('')}<td>${dual(st==='b'?P(hh[11],tv[11]):P(sum(hh),sum(tv)))}</td></tr>`).join('')+`</tbody></table></div>
-<p class="note">La TVA du mois est reversée le mois suivant (régime mensuel). Un crédit de TVA est reporté. L'impôt sur les sociétés n'est pas décaissé dans ce tableau. Les règlements fixés en fin d'année basculent sur l'année suivante.</p></div>`;
-return h}
 /* ===== PLAN DE FINANCEMENT ===== */
 function viewFin(){const y0=S.settings.year,Y=[y0,y0+1,y0+2],d=drafts.loan,q=drafts.eq;
 const col=Y.map((y,i)=>{const s=yearStats(y),b=bfrCalc(y).bfr,bp=bfrCalc(y-1).bfr,dB=psub(b,bp),li=s.loan,eq=eqYear(y);
 const inv=s.imm,dem=i===0?needsTotal():P(),cap=P(li.cap,li.cap);
 const emp=padd(inv,dem,cap,dB),res=padd(s.caf,P(eq,eq),P(li.in,li.in));
 return{y,inv,dem,cap,dB,emp,caf:s.caf,eq:P(eq,eq),lo:P(li.in,li.in),res,net:psub(res,emp)}});
-let cum=P(S.settings.opening,S.settings.opening);col.forEach(c=>{cum=padd(cum,c.net);c.cum=cum});
+let cum=openingFor(y0);col.forEach(c=>{cum=padd(cum,c.net);c.cum=cum});
 const L=(l,k,st)=>`<tr class="${st?'strong':''}"><td class="l">${l}${tags}</td>${col.map(c=>`<td class="${st&&(c[k].h<0||c[k].t<0)&&k==='cum'?'neg':''}">${dual(c[k])}</td>`).join('')}</tr>`;
 let h=head('Plan de financement','Ce que l\'entreprise doit financer (emplois) et avec quoi (ressources), sur trois exercices.');
 h+=`<div class="two"><div class="card"><h2>Emprunts</h2><div class="row">${fld('Nom',inp('loan.label',d.label,'placeholder="Prêt bancaire"'),'f2')}${fld('Montant (€)',inp('loan.amount',d.amount))}${fld('Taux annuel (%)',inp('loan.rate',d.rate))}${fld('Durée (mois)',inp('loan.months',d.months))}${fld('Différé (mois)',inp('loan.deferred',d.deferred))}${fld('Déblocage',`<input type="date" data-draft="loan.start" value="${d.start}">`)}<button class="pri" data-act="add-loan">Ajouter</button></div>
@@ -341,7 +321,7 @@ ${S.equity.map(e=>`<div class="row" style="justify-content:space-between;align-i
 h+=`<div class="card"><div class="scroll"><table class="t"><thead><tr><th class="l">Montants en €</th>${Y.map(y=>`<th>${y}</th>`).join('')}</tr></thead><tbody>
 <tr class="strong"><td class="l" colspan="${Y.length+1}">Emplois</td></tr>${L('Investissements','inv')}${L('Besoins de démarrage','dem')}${L('Remboursement d\'emprunts','cap')}${L('Variation du besoin en fonds de roulement','dB')}${L('Total des emplois','emp',1)}
 <tr class="strong"><td class="l" colspan="${Y.length+1}">Ressources</td></tr>${L('Capacité d\'autofinancement','caf')}${L('Apports et subventions','eq')}${L('Emprunts','lo')}${L('Total des ressources','res',1)}
-${L('Variation de trésorerie','net',1)}${L('Trésorerie cumulée (départ : '+e0(S.settings.opening)+')','cum',1)}</tbody></table></div>
+${L('Variation de trésorerie','net',1)}${L('Trésorerie cumulée (départ : '+e0(openingFor(y0).h)+' HT / '+e0(openingFor(y0).t)+' TTC)','cum',1)}</tbody></table></div>
 <p class="note">Les besoins de démarrage viennent de l'onglet Besoins, les investissements de vos pièces, la CAF de l'onglet CAF. Le HT est la base comptable ; le TTC montre le décaissement réel avant récupération de la TVA.</p></div>`;
 const fy=S.loans.flatMap(l=>sched(l).map(r=>({...r,l:l.label})));
 if(fy.length)h+=`<details class="card"><summary><b>Tableau d'amortissement des emprunts</b></summary><div class="scroll"><table class="t" style="margin-top:8px"><thead><tr><th class="l">Échéance</th><th class="l">Prêt</th><th>Capital</th><th>Intérêts</th><th>Mensualité</th><th>Reste dû</th></tr></thead><tbody>${fy.sort((a,b)=>a.date.localeCompare(b.date)).map(r=>`<tr><td class="l num">${fdate(r.date)}</td><td class="l">${esc(r.l)}</td><td class="num">${n2(r.capital)}</td><td class="num">${n2(r.interest)}</td><td class="num">${n2(r.capital+r.interest)}</td><td class="num">${n2(r.rest)}</td></tr>`).join('')}</tbody></table></div></details>`;
@@ -372,7 +352,7 @@ h+=`<div class="card"><div class="scroll"><table class="t"><thead><tr><th class=
 <tr><td class="l">Vérification : EBE – intérêts – impôt (méthode soustractive)${tags}</td>${St.map(s=>`<td>${dual(s.caf2)}</td>`).join('')}</tr>
 <tr class="strong"><td class="l">CAF – remboursement du capital${tags}</td>${net.map(p=>`<td>${dual(p)}</td>`).join('')}</tr></tbody></table></div>
 <p class="note">Impôt sur les sociétés : 15 % jusqu'à 42 500 € de résultat, 25 % au-delà (régime « IR » dans Paramètres : aucun impôt calculé). Dotations et intérêts n'ont pas de TVA.</p></div>`;
-return h}
+h+=bankCard(y0);return h}
 
 /* ===== BESOINS ===== */
 function viewBes(){const y=S.settings.year,d=drafts.need,b=bfrCalc(y),s=yearStats(y),st=S.settings,nt=needsTotal();
@@ -404,20 +384,15 @@ h+=`<div class="card"><h2>Ventes saisies face à l'objectif ${y}</h2><div class=
 <tr><td class="l">Objectif mensuel${tags}</td>${mo.map(()=>`<td>${dual(per(12))}</td>`).join('')}<td>${dual(Q)}</td></tr>
 <tr><td class="l">Ventes saisies${tags}</td>${mo.map((v,i)=>`<td>${dual(P(v,moT[i]))}</td>`).join('')}<td>${dual(real)}</td></tr>
 <tr class="strong"><td class="l">Écart${tags}</td>${mo.map((v,i)=>{const p=psub(P(v,moT[i]),per(12));return `<td class="${p.h<0?'neg':''}">${dual(p)}</td>`}).join('')}<td>${dual(psub(real,Q))}</td></tr></tbody></table></div></div>`;
-return h}
-
-/* ===== PARAMÈTRES ===== */
-function viewPar(){const st=S.settings;
-return head('Paramètres','Réglages généraux et sauvegarde de vos données.')+`<div class="card"><div class="row">${fld('Trésorerie au 1er janvier de l\'exercice (€)',bindIn('settings.opening',st.opening))}${fld('Imposition',`<select data-bind="settings.tax"><option value="is"${st.tax==='is'?' selected':''}>Impôt sur les sociétés (15 % / 25 %)</option><option value="ir"${st.tax==='ir'?' selected':''}>Impôt sur le revenu (pas d'IS)</option></select>`,'f2')}</div></div>
-<div class="card"><h2>Données</h2><div class="row"><button data-act="export-json">Télécharger une sauvegarde (JSON)</button><button data-act="load-demo">Recharger les données d'exemple</button><button class="danger" data-act="reset">Tout effacer</button></div><p class="note">Vos données sont enregistrées sur votre compte, privées, ou sur cet appareil si le compte n'est pas disponible.</p></div>`}
+h+=objAct(Q);return h}
 
 /* ===== NAVIGATION ET ÉVÉNEMENTS ===== */
-const TABS=[['compta','Comptabilité auto',viewCompta],['seuil','Seuil de rentabilité',viewSR],['tresorerie','Trésorerie',viewTre],['financement','Plan de financement',viewFin],['amortissement','Amortissements',viewAmo],['caf','CAF',viewCaf],['besoins','Besoins',viewBes],['objectif','Objectif de vente',viewObj],['parametres','Paramètres',viewPar]];
-function render(){if(!TABS.find(t=>t[0]===tab))tab='compta';const ys=[];for(let y=2024;y<=2034;y++)ys.push(y);
-$('#yearSel').innerHTML=ys.map(y=>`<option${y===S.settings.year?' selected':''}>${y}</option>`).join('');$('#coName').value=S.settings.name;
+const TABS=[['accueil','Accueil',viewAccueil],['compta','Comptabilité auto',viewCompta],['rapprochement','Rapprochement',viewRapp],['seuil','Seuil de rentabilité',viewSR],['tresorerie','Trésorerie',viewTre],['financement','Plan de financement',viewFin],['amortissement','Amortissements',viewAmo],['caf','CAF',viewCaf],['besoins','Besoins',viewBes],['objectif','Objectif de vente',viewObj],['previsionnel','Prévu et réalisé',viewPrev],['scenarios','Scénarios',viewScen],['cloture','Clôture et contrôles',viewClo],['parametres','Paramètres',viewPar]];
+function render(){if(!TABS.find(t=>t[0]===tab))tab='accueil';const ys=[];for(let y=2024;y<=2034;y++)ys.push(y);
+$('#yearSel').innerHTML=ys.map(y=>`<option${y===S.settings.year?' selected':''}>${y}</option>`).join('');$('#coName').value=S.settings.name;$('#scenSel').innerHTML=[['reel','Scénario : réel'],...Object.keys(S.scen.list).map(k=>[k,'Scénario : '+k])].map(([k,l])=>`<option value="${esc(k)}"${k===S.scen.cur?' selected':''}>${esc(l)}</option>`).join('');
 $('#nav').innerHTML=TABS.map(([k,l])=>`<a href="#${k}" class="${k===tab?'on':''}">${l}</a>`).join('');
 try{$('#view').innerHTML=TABS.find(t=>t[0]===tab)[2]()}catch(e){$('#view').innerHTML='<div class="card">Une erreur est survenue dans ce module : '+esc(e.message)+'</div>';console.error(e)}}
-window.addEventListener('hashchange',()=>{tab=location.hash.slice(1)||'compta';render();scrollTo(0,0)});
+window.addEventListener('hashchange',()=>{tab=location.hash.slice(1)||'accueil';render();scrollTo(0,0)});
 const setPath=(o,p,v)=>{const k=p.split('.');let x=o;k.slice(0,-1).forEach(a=>x=x[a]);x[k.at(-1)]=v};
 document.addEventListener('change',e=>{const t=e.target;
 if(t.dataset.bind){let v=t.value;if(t.dataset.num)v=v.trim()===''?'':num(v);setPath(S,t.dataset.bind,v);save();render();return}
@@ -431,13 +406,16 @@ if(k==='ttc'){d.ht=t.value===''?'':r2(num(t.value)/(1+num(d.rate)/100));const f=
 function download(name,data){if(!dl){toast('Téléchargement indisponible ici.');return}dl.save({filename:name,data}).catch(()=>{})}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act,id=b.dataset.id;
 const rm=k=>{S[k]=S[k].filter(x=>x.id!==id)};
+if(RO&&!['sub','kf','export-xlsx','export-pdf','export-fec','export-journal','export-json'].includes(a)){toast('Lecture seule : vous ne pouvez pas modifier ces données.');return}
+if(['edit-entry','del-entry'].includes(a)){const x=S.entries.find(q=>q.id===id);if(x&&S.locked[+x.date.slice(0,4)]){toast('Exercice clôturé : déverrouillez-le dans Clôture et contrôles.');return}}
 if(a==='sub'){ui.sub=b.dataset.v}
 else if(a==='kf'){ui.kf=b.dataset.v}
 else if(a==='add-entry'){const d=drafts.entry,ht=num(d.ht,NaN);if(!d.date||isNaN(ht)||!d.label.trim()){toast('Renseignez la date, le libellé et un montant.');return}
-const base={date:d.date,label:d.label.trim(),kind:d.kind,cat:d.cat,ht,rate:num(d.rate),delay:num(d.delay),dur:Math.max(1,num(d.dur,3)),mode:d.mode};
+if(S.locked[+d.date.slice(0,4)]){toast('Exercice clôturé : déverrouillez-le dans Clôture et contrôles.');return}
+const base={date:d.date,label:d.label.trim(),kind:d.kind,cat:d.cat,ht,rate:num(d.rate),delay:num(d.delay),dur:Math.max(1,num(d.dur,3)),mode:d.mode,act:(d.act||'').trim(),att:d.att||null};if(d.paid)base.paid=d.paid;
 if(d.editId){const i=S.entries.findIndex(x=>x.id===d.editId);if(i>=0)S.entries[i]={...base,id:d.editId}}
-else{const n=Math.max(1,Math.min(60,parseInt(d.rep)||1));for(let i=0;i<n;i++)S.entries.push({...base,id:uid(),date:addMonths(d.date,i)})}
-Object.assign(d,{label:'',ht:'',ttc:'',rep:1,editId:null});toast('Pièce enregistrée.')}
+else{const n=Math.max(1,Math.min(60,parseInt(d.rep)||1));const soc=d.cat==='641'?num(d.soc):0;for(let i=0;i<n;i++){const dt=addMonths(d.date,i);S.entries.push({...base,id:uid(),date:dt,paid:undefined});if(soc>0)S.entries.push({...base,id:uid(),date:dt,cat:'645',rate:0,ht:r2(ht*soc/100),label:'Charges patronales – '+base.label,att:null,paid:undefined})}}
+Object.assign(d,{label:'',ht:'',ttc:'',rep:1,editId:null,att:null,paid:'',soc:''});toast('Pièce enregistrée.')}
 else if(a==='edit-entry'){const x=S.entries.find(q=>q.id===id);Object.assign(drafts.entry,x,{ttc:r2(tt(x)),rep:1,editId:id});ui.sub='saisie'}
 else if(a==='cancel-edit'){drafts.entry.editId=null;Object.assign(drafts.entry,{label:'',ht:'',ttc:''})}
 else if(a==='del-entry')rm('entries');
@@ -447,20 +425,285 @@ else if(a==='add-eq'){const d=drafts.eq,am=num(d.amount);if(!d.label.trim()||am<
 else if(a==='del-eq')rm('equity');
 else if(a==='add-need'){const d=drafts.need,h=num(d.ht,NaN);if(!d.label.trim()||isNaN(h)){toast('Renseignez le libellé et le montant HT.');return}S.needs.push({id:uid(),label:d.label.trim(),ht:h,rate:num(d.rate)});Object.assign(d,{label:'',ht:''})}
 else if(a==='del-need')rm('needs');
-else if(a==='clear-demo'){const s=emptyState();s.settings.year=new Date().getFullYear();s.settings.name='Mon entreprise';S=s}
-else if(a==='load-demo'){S=demoState()}
-else if(a==='reset'){if(!b.dataset.ok){b.dataset.ok=1;b.textContent='Confirmer : tout effacer';return}const s=emptyState();S=s}
+else if(a==='clear-demo'){snapshot('Avant effacement des exemples');const s=emptyState();s.settings.year=new Date().getFullYear();s.settings.name='Mon entreprise';S=s}
+else if(a==='load-demo'){snapshot('Avant rechargement des exemples');S=demoState()}
+else if(a==='reset'){if(!b.dataset.ok){b.dataset.ok=1;b.textContent='Confirmer : tout effacer';return}snapshot('Avant effacement total');const s=emptyState();S=s}
 else if(a==='export-json'){download('compta-pilote-sauvegarde.json',JSON.stringify(S,null,2));return}
 else if(a==='export-journal'){const y=S.settings.year,L=journal(y);download('journal-'+y+'.csv','﻿'+'Date;Journal;Compte;Intitulé;Libellé;Débit;Crédit\n'+L.map(l=>[l.date,l.j,l.a,accName(l.a),'"'+l.label.replace(/"/g,'""')+'"',n2(l.d),n2(l.c)].join(';')).join('\n'));return}
+else if(EXT[a]){if(EXT[a](b)===false)return}
 else return;
 save();render()});
 
-/* démarrage */
-try{const raw=localStorage.getItem(KEY);S=raw?Object.assign(emptyState(),JSON.parse(raw)):demoState()}catch(e){S=demoState()}
+/* ===== EXTENSIONS : moteur ===== */
+const EXT={};let ver=0,SC=null,RO=false,ASSETS=null,DB=null,lastSnap=0;
+const sum=a=>a.reduce((x,y)=>x+y,0);
+const NOSUP=['641','645','635','627','616'];
+const scenName=()=>SC??S.scen.cur;
+let ecache=null,ekey='';
+function E(){const sc=scenName(),p=S.scen.list[sc],k=ver+'|'+sc+'|'+S.entries.length+'|'+JSON.stringify(p||0);if(ecache&&ekey===k)return ecache;
+ecache=!p?S.entries:S.entries.map(e=>e.kind==='vente'?{...e,ht:e.ht*(1+p.ca/100),delay:(e.delay||0)+(p.delay||0)}:e.kind==='varia'?{...e,ht:e.ht*(1+p.ca/100)}:e);ekey=k;return ecache}
+const withScen=(n,f)=>{const o=SC;SC=n;try{return f()}finally{SC=o}};
+const minYear=()=>S.entries.length?Math.min(...S.entries.map(e=>+e.date.slice(0,4))):S.settings.year;
+const actNames=()=>[...new Set(S.entries.map(e=>e.act).filter(Boolean))];
+function supBase(y){let p=P();E().forEach(e=>{if(+e.date.slice(0,4)===y&&(e.kind==='varia'||(e.kind==='fixe'&&!NOSUP.includes(e.cat))))p=padd(p,P(e.ht,tt(e)))});return p}
+const cashDate=e=>e.paid||addDays(e.date,e.delay||0);
+
+/* trésorerie : TVA selon le régime, impôt, règlements réels */
+function treasury(y,open){const Z=()=>Array(12).fill(0),st=S.settings,fr=st.tvaRegime==='franchise';
+const R={vH:Z(),vV:Z(),eq:Z(),li:Z(),cvH:Z(),cvV:Z(),cfH:Z(),cfV:Z(),imH:Z(),imV:Z(),cap:Z(),int:Z(),pay:Z(),isP:Z(),dV:Z(),dD:Z()};
+const goods=c=>['707','701'].includes(c),mp={vente:['vH','vV'],varia:['cvH','cvV'],fixe:['cfH','cfV'],immo:['imH','imV']};
+E().forEach(e=>{const cd=cashDate(e),[yy,mm]=dparts(cd),v=fr&&e.kind==='vente'?0:e.ht*e.rate/100;
+if(yy===y){const m=mp[e.kind];R[m[0]][mm-1]+=e.ht;R[m[1]][mm-1]+=v}
+if(!fr){const onDeb=e.kind!=='vente'||st.tvaBasis==='deb'||(st.tvaBasis==='mixte'&&goods(e.cat));const [y2,m2]=dparts(onDeb?e.date:cd);if(y2===y){if(e.kind==='vente')R.dV[m2-1]+=v;else R.dD[m2-1]+=v}}});
+S.equity.forEach(q=>{const [yy,mm]=dparts(q.date);if(yy===y)R.eq[mm-1]+=q.amount});
+S.loans.forEach(l=>{const [yy,mm]=dparts(l.start);if(yy===y)R.li[mm-1]+=l.amount;sched(l).forEach(r=>{const [a,b]=dparts(r.date);if(a===y){R.cap[b-1]+=r.capital;R.int[b-1]+=r.interest}})});
+let carry=0,acc=0,due=0;const ends=st.tvaRegime==='trimestriel'?[2,5,8,11]:[0,1,2,3,4,5,6,7,8,9,10,11];
+if(!fr){for(let m=0;m<12;m++){acc+=R.dV[m]-R.dD[m];if(ends.includes(m)){const bal=carry+acc;acc=0;if(bal>0){if(m<11)R.pay[m+1]+=bal;else due=bal;carry=0}else carry=bal}}
+if(y-1>=minYear())R.pay[0]+=treasury(y-1,P()).due}
+R.due=due;
+if(st.tax==='is'&&y-1>=minYear()){const i1=yearStats(y-1).is.h,i2=y-2>=minYear()?yearStats(y-2).is.h:0;[2,5,8,11].forEach(m=>R.isP[m]+=i1*0.25);R.isP[4]+=Math.max(0,i1-i2)}
+const A=f=>Array.from({length:12},(_,i)=>f(i));
+R.vT=A(i=>R.vH[i]+R.vV[i]);R.cvT=A(i=>R.cvH[i]+R.cvV[i]);R.cfT=A(i=>R.cfH[i]+R.cfV[i]);R.imT=A(i=>R.imH[i]+R.imV[i]);
+R.inH=A(i=>R.vH[i]+R.eq[i]+R.li[i]);R.inT=A(i=>R.vT[i]+R.eq[i]+R.li[i]);
+R.outH=A(i=>R.cvH[i]+R.cfH[i]+R.imH[i]+R.cap[i]+R.int[i]+R.isP[i]);R.outT=A(i=>R.cvT[i]+R.cfT[i]+R.imT[i]+R.cap[i]+R.int[i]+R.isP[i]);
+R.nH=A(i=>R.inH[i]-R.outH[i]);R.nT=A(i=>R.inT[i]-R.outT[i]-R.pay[i]);
+const op=open||openingFor(y);let a=op.h,b=op.t;R.bH=R.nH.map(v=>a+=v);R.bT=R.nT.map(v=>b+=v);R.op=op;return R}
+function openingFor(y){const st=S.settings,first=+st.first||minYear();let bal=P(num(st.opening),num(st.opening));
+for(let yy=first;yy<y;yy++){const T=treasury(yy,bal);bal=P(T.bH[11],T.bT[11])}return bal}
+
+/* historique et sauvegardes */
+async function snapshot(reason){const data=JSON.stringify(S),ts=Date.now();lastSnap=ts;
+try{if(DB){await DB.collection('history').doc(String(ts)).set(Object.assign({ts,reason},await pack(S)));const l=await DB.collection('history').orderBy('ts','desc').limit(40).get();for(const d of l.docs.slice(20))await DB.collection('history').doc(d.id).delete()}
+else{const h=JSON.parse(localStorage.getItem('compta-pilote-hist')||'[]');h.unshift({ts,reason,data});localStorage.setItem('compta-pilote-hist',JSON.stringify(h.slice(0,3)))}}catch(e){}}
+function autoSnap(){if(!RO&&Date.now()-lastSnap>12*3600*1000)snapshot('Automatique')}
+async function loadHist(){try{if(DB){const l=await DB.collection('history').orderBy('ts','desc').limit(20).get();ui.hist=l.docs.map(d=>d.data())}else ui.hist=JSON.parse(localStorage.getItem('compta-pilote-hist')||'[]')}catch(e){ui.hist=[]}}
+const norm=s=>{const e=emptyState();return Object.assign(e,s,{settings:Object.assign(e.settings,s.settings||{}),scen:Object.assign(e.scen,s.scen||{}),closing:s.closing||{},locked:s.locked||{}})};
+
+/* bibliothèques d'export */
+const libs={};const loadLib=u=>libs[u]||(libs[u]=new Promise((ok,ko)=>{const s=document.createElement('script');s.src=u;s.onload=ok;s.onerror=()=>ko(new Error('Chargement impossible'));document.head.appendChild(s)}));
+const clean=c=>{const k=c.cloneNode(true);k.querySelectorAll('.tags').forEach(x=>x.remove());return k.textContent.replace(/\s+/g,' ').trim()};
+const toNum=s=>{const t=s.replace(/[\s  ]/g,'').replace(',','.');return /^-?\d+(\.\d+)?$/.test(t)?Number(t):s};
+function viewTables(){const out=[];document.querySelectorAll('#view table').forEach(t=>{const title=t.closest('.card')?.querySelector('h2')?.textContent||'';const rows=[...t.rows],dual=new Set();
+rows.forEach(r=>[...r.cells].forEach((c,j)=>{if(c.querySelector('.dual'))dual.add(j)}));
+const A=rows.map(r=>{const o=[];[...r.cells].forEach((c,j)=>{if(c.colSpan>1){o.push(clean(c));for(let k=1;k<c.colSpan;k++)o.push('');return}
+const d=c.querySelector('.dual');if(d){const v=[...d.children].map(x=>x.textContent);o.push(v[0],v[1])}
+else if(dual.has(j)){const tx=clean(c);if(c.tagName==='TH')o.push(tx+' HT',tx+' TTC');else o.push(tx,'')}else o.push(clean(c))});return o});
+const w=Math.max(...A.map(r=>r.length));A.forEach(r=>{while(r.length<w)r.push('')});out.push({title,A,head:t.tHead?t.tHead.rows.length:0})});return out}
+const tabLabel=()=>TABS.find(t=>t[0]===tab)[1];
+EXT['export-xlsx']=()=>{(async()=>{const T=viewTables();if(!T.length){toast('Aucun tableau à exporter sur cette page.');return}if(!dl){toast('Téléchargement indisponible ici.');return}
+try{await loadLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');const rows=[[tabLabel()+' – '+S.settings.name+' – '+S.settings.year+' (colonnes HT et TTC)'],[]];
+T.forEach(t=>{if(t.title)rows.push([t.title]);t.A.forEach(r=>rows.push(r.map(toNum)));rows.push([])});
+const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),tabLabel().slice(0,28));
+await dl.save({filename:'compta-'+tab+'-'+S.settings.year+'.xlsx',data:XLSX.write(wb,{type:'array',bookType:'xlsx'})})}catch(e){if(e&&e.code!=='declined')toast('Export Excel impossible.')}})();return false};
+EXT['export-pdf']=()=>{(async()=>{const T=viewTables();if(!T.length){toast('Aucun tableau à exporter sur cette page.');return}if(!dl){toast('Téléchargement indisponible ici.');return}
+try{await loadLib('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');await loadLib('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js');
+const san=s=>String(s).replace(/[  ]/g,' ').replace(/€/g,'EUR'),doc=new window.jspdf.jsPDF({orientation:'landscape',unit:'pt',format:'a4'});
+doc.setFontSize(14);doc.text(san(tabLabel()+' - '+S.settings.name+' - '+S.settings.year+' (HT et TTC)'),30,34);let y=50;
+T.forEach(t=>{if(t.title){doc.setFontSize(10);doc.text(san(t.title),30,y+10);y+=16}const hd=t.head?t.A.slice(0,t.head):[],bd=t.A.slice(t.head);
+doc.autoTable({head:hd.map(r=>r.map(san)),body:bd.map(r=>r.map(san)),startY:y,styles:{fontSize:7,cellPadding:2},headStyles:{fillColor:[29,78,95]},margin:{left:30,right:30}});y=doc.lastAutoTable.finalY+22});
+await dl.save({filename:'compta-'+tab+'-'+S.settings.year+'.pdf',data:doc.output('arraybuffer')})}catch(e){if(e&&e.code!=='declined')toast('Export PDF impossible.')}})();return false};
+EXT['export-fec']=()=>{const y=S.settings.year,L=journal(y);let n=0,last='';const f=v=>n2(v).replace(/\s| /g,'');
+const H=['JournalCode','JournalLib','EcritureNum','EcritureDate','CompteNum','CompteLib','CompAuxNum','CompAuxLib','PieceRef','PieceDate','EcritureLib','Debit','Credit','EcritureLet','DateLet','ValidDate','Montantdevise','Idevise'];
+const JL={VT:'Ventes',AC:'Achats',BQ:'Banque',OD:'Opérations diverses'};
+const body=L.map(l=>{const k=l.date+l.j+l.label;if(k!==last){n++;last=k}const d=l.date.replace(/-/g,'');return [l.j,JL[l.j],n,d,l.a,accName(l.a),'','','P'+n,d,l.label.replace(/\t/g,' '),f(l.d),f(l.c),'','',d,'','EUR'].join('\t')});
+if(!dl){toast('Téléchargement indisponible ici.');return false}dl.save({filename:'FEC-'+y+'.txt',data:H.join('\t')+'\n'+body.join('\n')}).catch(()=>{});return false};
+
+/* contrôles de cohérence et alertes */
+function checks(){const C=[],seen={};
+S.entries.forEach(e=>{const k=[e.kind,e.date,e.label,e.ht].join('|');if(seen[k])C.push({l:'warn',m:'Doublon possible : « '+e.label+' » du '+fdate(e.date)+' ('+n2(e.ht)+' € HT).'});seen[k]=1;
+const y=+e.date.slice(0,4),c=catOf(e.cat);
+if(isNaN(y)||y<2000||y>2100)C.push({l:'err',m:'Date incohérente : « '+e.label+' » ('+e.date+').'});
+else if(y>new Date().getFullYear()+3)C.push({l:'warn',m:'Date très lointaine : « '+e.label+' » ('+fdate(e.date)+').'});
+if(c&&c.r===0&&e.rate>0&&e.kind!=='vente')C.push({l:'err',m:'TVA sur un compte normalement sans TVA : « '+e.label+' » ('+e.cat+' '+c.n+', '+e.rate+' %).'});
+if(e.kind==='vente'&&e.rate===0&&S.settings.tvaRegime!=='franchise')C.push({l:'warn',m:'Vente sans TVA : « '+e.label+' » ('+fdate(e.date)+'). Régime de franchise en base ?'});
+if(e.ht<0)C.push({l:'warn',m:'Montant négatif (avoir ?) : « '+e.label+' » ('+n2(e.ht)+' € HT).'});
+if(e.ht===0)C.push({l:'warn',m:'Montant nul : « '+e.label+' ».'});
+if(e.kind==='immo'&&e.ht<500)C.push({l:'warn',m:'Investissement de moins de 500 € HT : « '+e.label+' » est peut-être une charge.'})});
+const j=journal(S.settings.year),D=sum(j.map(l=>l.d)),Cr=sum(j.map(l=>l.c));if(Math.abs(D-Cr)>0.05)C.push({l:'err',m:'Journal '+S.settings.year+' déséquilibré de '+n2(D-Cr)+' €.'});
+const cap=new Set();[...C].forEach(x=>cap.add(x.m));return C.filter((x,i)=>C.findIndex(q=>q.m===x.m)===i).slice(0,200)}
+function unpaid(){const t=todayISO;return S.entries.filter(e=>!e.paid&&cashDate(e)<=addDays(t,60)).map(e=>({e,due:cashDate(e),late:cashDate(e)<t?Math.round((Date.parse(t)-Date.parse(cashDate(e)))/864e5):0})).sort((a,b)=>a.due.localeCompare(b.due))}
+function alerts(){const y=S.settings.year,A=[],st=S.settings,T=treasury(y),mn=Math.min(...T.bT),mi=T.bT.indexOf(mn);
+if(mn<0)A.push({l:'bad',m:'Trésorerie négative en '+MONTHS[mi]+' '+y+' : '+e0(mn)+' TTC. Prévoyez un financement ou décalez des dépenses.'});
+else if(mn<st.cashAlert)A.push({l:'warn',m:'Trésorerie sous '+e0(st.cashAlert)+' en '+MONTHS[mi]+' '+y+' ('+e0(mn)+' TTC).'});
+if(T.due>0)A.push({l:'warn',m:'TVA à reverser en début d\'année suivante : '+e0(T.due)+'.'});
+const now=new Date(),nm=now.getMonth()+1;if(now.getFullYear()===y&&nm<12&&T.pay[nm]>0)A.push({l:'warn',m:'TVA à payer le mois prochain : '+e0(T.pay[nm])+'.'});
+const lim=addDays(todayISO,35);S.loans.forEach(l=>sched(l).forEach(r=>{if(r.date>todayISO&&r.date<=lim)A.push({l:'warn',m:'Échéance de « '+l.label+' » le '+fdate(r.date)+' : '+e2(r.capital+r.interest)+'.'})}));
+const s=yearStats(y),ds=s.loan.cap+s.loan.int;if(ds>0&&s.caf.h/ds<1.2)A.push({l:'warn',m:'CAF insuffisante pour rembourser les emprunts '+y+' : couverture '+n2(s.caf.h/ds)+' (visez au moins 1,2).'});
+const up=unpaid().filter(x=>x.late>0);if(up.length)A.push({l:'warn',m:up.length+' pièce(s) échue(s) non rapprochées. Voir l\'onglet Rapprochement.'});
+const er=checks().filter(x=>x.l==='err');if(er.length)A.push({l:'bad',m:er.length+' erreur(s) de cohérence à corriger (Clôture et contrôles).'});
+if(now.getFullYear()===y){const c=srCalc();if(c.tm>0){const R=num(S.goal.result),req=(c.cfH+R)/c.tm,el=(now-new Date(y,0,1))/(365*864e5);let real=0;S.entries.forEach(e=>{if(e.kind==='vente'&&+e.date.slice(0,4)===y&&e.date<=todayISO)real+=e.ht});if(req>0&&real<0.9*req*el)A.push({l:'warn',m:'Objectif de vente en retard : '+e0(real)+' HT réalisés pour '+e0(req*el)+' attendus à ce jour.'})}}
+return A}
+
+/* indicateurs bancaires */
+function loanRest(y){let d=0;S.loans.forEach(l=>{if(+l.start.slice(0,4)>y)return;const r=sched(l).filter(x=>+x.date.slice(0,4)<=y);d+=r.length?r[r.length-1].rest:l.amount});return d}
+function bankInd(y){const s=yearStats(y),debt=loanRest(y),ds=s.loan.cap+s.loan.int;let rn=0;for(let yy=minYear();yy<=y;yy++)rn+=yearStats(yy).rn.h;
+const cap=sum(S.equity.filter(q=>+q.date.slice(0,4)<=y).map(q=>q.amount))+rn;
+return{s,debt,ds,cap,dscr:ds>0?s.caf.h/ds:null,gear:cap>0?debt/cap:null,pay:s.caf.h>0?debt/s.caf.h:null,mn:s.ca.h>0?s.rn.h/s.ca.h:null,ebe:s.ca.h>0?s.ebe.h/s.ca.h:null,sr:srCalc().SRp}}
+/* ===== TRÉSORERIE ===== */
+function viewTre(){const y=S.settings.year,T=treasury(y),op=T.op,Z=Array(12).fill(0);
+const R=[['Encaissements clients',T.vH,T.vT],['Apports, comptes courants et subventions',T.eq,T.eq],['Emprunts reçus',T.li,T.li],['Total encaissements',T.inH,T.inT,'s'],['Charges variables',T.cvH,T.cvT],['Charges fixes',T.cfH,T.cfT],['Investissements',T.imH,T.imT],['Remboursement d\'emprunts (capital)',T.cap,T.cap],['Intérêts d\'emprunts',T.int,T.int],['Impôt sur les sociétés (acomptes et solde)',T.isP,T.isP],['Total décaissements',T.outH,T.outT,'s'],['TVA reversée à l\'État',Z,T.pay],['Flux net du mois',T.nH,T.nT,'s'],['Trésorerie en fin de mois',T.bH,T.bT,'b']];
+const mn=Math.min(...T.bT),mi=T.bT.indexOf(mn),rg={mensuel:'mensuel',trimestriel:'trimestriel',franchise:'franchise en base'}[S.settings.tvaRegime];
+let h=head('Tableau de trésorerie','Mois par mois, à la date de règlement réelle (ou prévue). Chaque cellule indique le HT (vert) puis le TTC (violet). La trésorerie réelle est la ligne TTC.');
+if(scenName()!=='reel')h+=`<div class="banner">Scénario « ${esc(scenName())} » actif : les chiffres sont des hypothèses.</div>`;
+h+=`<div class="grid">${kpi('Trésorerie fin '+y,P(T.bH[11],T.bT[11]),'Départ : '+e0(op.h)+' HT / '+e0(op.t)+' TTC')}${kpi('Point le plus bas ('+MONTHS[mi]+')',P(T.bH[T.bT.indexOf(mn)],mn),mn<0?'<span class="chip bad">Trésorerie négative</span>':'<span class="chip good">Toujours positive</span>')}<div class="kpi"><div class="kl">TVA à reverser début ${y+1}</div><div class="kv"><span class="t">${e0(T.due)}</span></div><div class="ks">Régime : ${rg}</div></div></div>`;
+h+=`<div class="card"><div class="legend"><span><b style="background:var(--ht)"></b>Solde HT</span><span><b style="background:var(--ttc)"></b>Solde TTC (réel)</span></div>${lineChart([{v:T.bH,c:'var(--ht)'},{v:T.bT,c:'var(--ttc)'}],MONTHS)}</div>`;
+h+=`<div class="card"><div class="scroll"><table class="t wide"><thead><tr><th class="l">Montants en €</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total</th></tr></thead><tbody>`+R.map(([l,hh,tv,st])=>`<tr class="${st?'strong':''}"><td class="l">${l}${tags}</td>${hh.map((x,i)=>`<td class="${st&&(tv[i]<0||x<0)?'neg':''}">${dual(P(x,tv[i]))}</td>`).join('')}<td>${dual(st==='b'?P(hh[11],tv[11]):P(sum(hh),sum(tv)))}</td></tr>`).join('')+`</tbody></table></div>
+<p class="note">Départ : report automatique du solde de l'année précédente. TVA : ${rg}${S.settings.tvaRegime==='trimestriel'?' (payée en avril, juillet, octobre et janvier)':''}, avec report des crédits. La TVA de décembre de l'année précédente est reversée en janvier. Impôt : acomptes de 25 % en mars, juin, septembre et décembre, solde en mai.</p></div>`;
+return h}
+
+/* ===== ACCUEIL ===== */
+function viewAccueil(){const y=S.settings.year,s=yearStats(y),T=treasury(y),c=srCalc(),A=alerts(),R=num(S.goal.result),req=c.tm>0?(c.cfH+R)/c.tm:0;
+const pct=req>0?s.ca.h/req*100:0,mn=Math.min(...T.bT);
+let h=head(esc(S.settings.name),'Vue d\'ensemble de l\'exercice '+y+(scenName()!=='reel'?' · scénario « '+esc(scenName())+' »':'')+'.');
+if(S.demo)h+=`<div class="banner"><span>Données d'exemple affichées. Remplacez-les par les vôtres.</span><button data-act="clear-demo">Effacer les exemples et repartir de zéro</button></div>`;
+if(RO)h+='<div class="banner">Lecture seule : vous consultez cette comptabilité sans pouvoir la modifier.</div>';
+h+=`<div class="grid">${kpi('Chiffre d\'affaires',s.ca)}${kpi('Résultat net',s.rn)}${kpi('CAF',s.caf)}${kpi('Trésorerie fin d\'année',P(T.bH[11],T.bT[11]),'Point bas : '+e0(mn)+' TTC')}${kpi('Seuil de rentabilité',c.SRp,c.tm>0&&s.ca.h>0?(s.ca.h>=c.SR?'<span class="chip good">Seuil dépassé</span>':'<span class="chip warn">Seuil non atteint</span>'):'')}${kpi('Objectif de vente',P(req,req*c.kv),req>0?n0(pct)+' % réalisé':'')}</div>`;
+h+=`<div class="two"><div class="card"><h2>Alertes (${A.length})</h2>${A.length?A.map(a=>`<p style="margin:0 0 8px"><span class="chip ${a.l}">${a.l==='bad'?'Urgent':'À surveiller'}</span> ${esc(a.m)}</p>`).join(''):'<p style="margin:0"><span class="chip good">Tout est en ordre</span></p>'}</div>
+<div class="card"><h2>Trésorerie ${y}</h2><div class="legend"><span><b style="background:var(--ht)"></b>HT</span><span><b style="background:var(--ttc)"></b>TTC</span></div>${lineChart([{v:T.bH,c:'var(--ht)'},{v:T.bT,c:'var(--ttc)'}],MONTHS)}</div></div>`;
+h+=bankCard(y)+`<div class="card"><h2>Accès rapides</h2><div class="sub">${[['compta','Saisir une pièce'],['rapprochement','Rapprocher'],['tresorerie','Trésorerie'],['scenarios','Scénarios'],['cloture','Contrôles']].map(([k,l])=>`<a href="#${k}"><button>${l}</button></a>`).join('')}</div></div>`;
+return h}
+function bankCard(y){const b=bankInd(y),ch=(v,ok,t)=>v==null?'<span class="chip">n.c.</span>':`<span class="chip ${ok?'good':'warn'}">${t}</span>`;
+return `<div class="card"><h2>Indicateurs pour votre banquier ${y}</h2><div class="grid">${kpi('CAF',b.s.caf)}${kpi('Service de la dette (capital + intérêts)',P(b.ds,b.ds))}${kpi('Dettes financières fin d\'année',P(b.debt,b.debt))}${kpi('Capitaux propres estimés',P(b.cap,b.cap),'Apports + résultats cumulés')}</div>
+<table class="t" style="margin-top:12px"><thead><tr><th class="l">Ratio</th><th>Valeur</th><th>Lecture</th></tr></thead><tbody>
+<tr><td class="l">Couverture de la dette (CAF ÷ service de la dette)</td><td class="num">${b.dscr==null?'-':n2(b.dscr)}</td><td>${ch(b.dscr,b.dscr>=1.2,'visez au moins 1,2')}</td></tr>
+<tr><td class="l">Endettement (dettes ÷ capitaux propres)</td><td class="num">${b.gear==null?'-':n2(b.gear)}</td><td>${ch(b.gear,b.gear<=1,'idéalement sous 1')}</td></tr>
+<tr><td class="l">Capacité de remboursement (dettes ÷ CAF, en années)</td><td class="num">${b.pay==null?'-':n2(b.pay)}</td><td>${ch(b.pay,b.pay<=4,'idéalement sous 4 ans')}</td></tr>
+<tr><td class="l">Marge nette (résultat ÷ CA)</td><td class="num">${b.mn==null?'-':n2(b.mn*100)+' %'}</td><td>${ch(b.mn,b.mn>=0.05,'visez au moins 5 %')}</td></tr>
+<tr><td class="l">Taux d'EBE (EBE ÷ CA)</td><td class="num">${b.ebe==null?'-':n2(b.ebe*100)+' %'}</td><td>${ch(b.ebe,b.ebe>=0.1,'visez au moins 10 %')}</td></tr>
+<tr><td class="l">Point mort mensuel${tags}</td><td>${dual(pmul(b.sr,1/12))}</td><td></td></tr></tbody></table></div>`}
+
+/* ===== RAPPROCHEMENT ===== */
+function viewRapp(){const U=unpaid(),cl=U.filter(x=>x.e.kind==='vente'),fo=U.filter(x=>x.e.kind!=='vente');
+const T=L=>L.reduce((a,x)=>padd(a,P(x.e.ht,tt(x.e))),P()),late=cl.filter(x=>x.late>0);
+const tbl=(L,t)=>`<div class="card"><h2>${t} (${L.length})</h2><div class="scroll"><table class="t"><thead><tr><th class="l">Échéance</th><th class="l">Libellé</th><th>HT</th><th>TTC</th><th>Retard</th><th></th></tr></thead><tbody>${L.slice(0,150).map(x=>`<tr><td class="l num">${fdate(x.due)}</td><td class="l">${esc(x.e.label)}</td><td class="num" style="color:var(--ht)">${n2(x.e.ht)}</td><td class="num" style="color:var(--ttc)">${n2(tt(x.e))}</td><td>${x.late?`<span class="chip bad">${x.late} j</span>`:'<span class="chip">à venir</span>'}</td><td><button class="lnk" data-act="mark-paid" data-id="${x.e.id}">Marquer réglé</button></td></tr>`).join('')||'<tr><td colspan="6" class="l" style="color:var(--muted)">Rien à rapprocher.</td></tr>'}</tbody></table></div></div>`;
+return head('Rapprochement','Marquez les pièces réglées pour que la trésorerie reflète les encaissements et paiements réels. Les pièces échues non réglées sont des impayés ou des oublis.')+`<div class="grid">${kpi('Clients à encaisser',T(cl))}${kpi('dont en retard',T(late),late.length+' facture(s)')}${kpi('Fournisseurs et charges à payer',T(fo))}</div>
+<div class="card"><div class="row"><button class="pri" data-act="pay-all-due">Marquer réglées toutes les pièces échues, à leur date d'échéance</button></div><p class="note">Une pièce réglée prend la date de règlement réelle dans la trésorerie et le journal bancaire. Seules les pièces échues ou dues sous 60 jours sont listées.</p></div>${tbl(cl,'Clients')}${tbl(fo,'Fournisseurs, charges et investissements')}`}
+EXT['mark-paid']=b=>{const e=S.entries.find(x=>x.id===b.dataset.id);if(!e)return false;if(S.locked[+e.date.slice(0,4)]){toast('Exercice clôturé.');return false}const d=cashDate(e);e.paid=d<=todayISO?d:todayISO};
+EXT['pay-all-due']=()=>{let n=0;S.entries.forEach(e=>{if(!e.paid&&cashDate(e)<todayISO&&!S.locked[+e.date.slice(0,4)]){e.paid=cashDate(e);n++}});toast(n+' pièce(s) marquée(s) réglée(s).')};
+
+/* ===== ACTIVITÉS ===== */
+function actStats(y){const m={};const g=a=>m[a||'Général']||(m[a||'Général']={ca:P(),cv:P(),cf:P()});let cfG=P();
+E().forEach(e=>{if(+e.date.slice(0,4)!==y)return;const p=P(e.ht,tt(e));if(e.kind==='vente')g(e.act).ca=padd(g(e.act).ca,p);else if(e.kind==='varia')g(e.act).cv=padd(g(e.act).cv,p);else if(e.kind==='fixe'){if(e.act)g(e.act).cf=padd(g(e.act).cf,p);else cfG=padd(cfG,p)}});
+const s=yearStats(y);cfG=padd(cfG,s.dot,s.int);const tot=sum(Object.values(m).map(a=>a.ca.h));
+return{m,cfG,tot}}
+function actSection(y){const {m,cfG,tot}=actStats(y),ks=Object.keys(m).filter(k=>m[k].ca.h||m[k].cv.h||m[k].cf.h);if(ks.length<2)return `<div class="card"><h2>Par activité</h2><p style="margin:0;color:var(--muted)">Renseignez le champ « Activité » de vos pièces (Services, Boutique…) pour obtenir un seuil de rentabilité par activité.</p></div>`;
+const rows=ks.map(k=>{const a=m[k],sh=tot>0?a.ca.h/tot:1/ks.length,cf=padd(a.cf,pmul(cfG,sh)),mg=psub(a.ca,a.cv),tm=a.ca.h>0?mg.h/a.ca.h:0,sr=tm>0?cf.h/tm:0,k2=ratio(a.ca,1.2);
+return `<tr><td class="l">${esc(k)}</td><td>${dual(a.ca)}</td><td>${dual(mg)}<span class="chip">${n0(tm*100)} %</span></td><td>${dual(cf)}</td><td>${dual(P(sr,sr*k2))}</td><td>${tm>0?(a.ca.h>=sr?'<span class="chip good">atteint</span>':'<span class="chip warn">non atteint</span>'):'-'}</td></tr>`}).join('');
+return `<div class="card"><h2>Seuil de rentabilité par activité</h2><div class="scroll"><table class="t"><thead><tr><th class="l">Activité</th><th>CA</th><th>Marge sur coûts variables</th><th>Charges fixes affectées</th><th>Seuil (CA)</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><p class="note">Charges fixes saisies avec une activité : affectées directement. Les autres charges fixes, amortissements et intérêts sont répartis au prorata du chiffre d'affaires. Chaque cellule indique le HT puis le TTC.</p></div>`}
+function objAct(Q){const {m,tot}=actStats(S.settings.year),ks=Object.keys(m).filter(k=>m[k].ca.h>0);if(ks.length<2||tot<=0)return '';
+return `<div class="card"><h2>Objectif par activité</h2><div class="scroll"><table class="t"><thead><tr><th class="l">Activité</th><th>Part du CA</th><th>Objectif annuel</th><th>Objectif mensuel</th></tr></thead><tbody>${ks.map(k=>{const sh=m[k].ca.h/tot;return `<tr><td class="l">${esc(k)}</td><td class="num">${n0(sh*100)} %</td><td>${dual(pmul(Q,sh))}</td><td>${dual(pmul(Q,sh/12))}</td></tr>`}).join('')}</tbody></table></div><p class="note">Répartition selon le poids de chaque activité dans vos ventes de l'exercice.</p></div>`}
+/* ===== IMPORT BANCAIRE ===== */
+ui.impText='';ui.imp=[];
+function parseBank(txt){const L=txt.split(/\r?\n/).filter(l=>l.trim());if(L.length<2)return[];const dm=[';','\t',','].find(d=>L[0].includes(d))||';';
+const split=l=>{const o=[];let c='',q=false;for(const ch of l){if(ch==='"')q=!q;else if(ch===dm&&!q){o.push(c);c=''}else c+=ch}o.push(c);return o.map(x=>x.trim())};
+const H=split(L[0]).map(h=>h.toLowerCase()),ix=re=>H.findIndex(h=>re.test(h)),iD=ix(/date/),iL=ix(/libell|label|description|intitul|objet|d[ée]tail/),iM=ix(/^montant|amount/),iDb=ix(/d[ée]bit/),iCr=ix(/cr[ée]dit/);
+if(iD<0||iL<0||(iM<0&&iDb<0&&iCr<0))return null;
+const pd=s=>{let m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);if(m)return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);return m?m[0]:''};
+const out=[];L.slice(1).forEach(l=>{const c=split(l),date=pd(c[iD]||'');if(!date)return;const amt=iM>=0?num(c[iM]):num(c[iCr])-Math.abs(num(c[iDb]));if(!amt)return;
+const label=c[iL]||'',rule=S.rules.find(r=>label.toLowerCase().includes(r.kw)),cat=rule?rule.cat:(amt>0?'706':'606'),ct=catOf(cat);
+const dup=S.entries.some(e=>e.date===date&&Math.abs(tt(e)-Math.abs(amt))<0.02);
+out.push({date,label,amt,cat,rate:rule&&rule.rate!=null?rule.rate:ct.r,kw:'',on:!dup,dup,auto:!!rule})});return out}
+function viewImport(){let h=`<div class="card"><h2>Importer un relevé bancaire (CSV)</h2><p class="lead" style="margin-top:0">Collez ou chargez le fichier CSV de votre banque. Colonnes reconnues : date, libellé, montant (ou débit et crédit). Les montants du relevé sont des TTC.</p>
+<div class="row"><div class="field f2"><label>Fichier CSV</label><input type="file" accept=".csv,.txt" data-ext="bank-file"></div></div>
+<div class="field" style="margin-top:10px"><label>Ou collez le contenu</label><textarea id="imp-text" data-ext="imp-text" rows="5" style="width:100%;font:12px var(--mono);background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px" placeholder="Date;Libellé;Montant&#10;12/11/2026;PRLV EDF;-84,50">${esc(ui.impText)}</textarea></div>
+<div class="row" style="margin-top:10px"><button class="pri" data-act="imp-parse">Analyser</button></div></div>`;
+if(ui.imp===null)h+='<div class="card">Colonnes non reconnues. Il faut au minimum une colonne date, une colonne libellé et une colonne montant (ou débit et crédit).</div>';
+else if(ui.imp.length){const co=CATS.filter(c=>c.k!=='immo').map(c=>[c.a,c.a+' · '+c.n]);
+h+=`<div class="card"><h2>${ui.imp.length} ligne(s) à vérifier</h2><div class="scroll"><table class="t"><thead><tr><th class="l">Importer</th><th class="l">Date</th><th class="l">Libellé</th><th>TTC</th><th class="l">Catégorie</th><th class="l">TVA</th><th>HT</th><th class="l">Mémoriser (mot-clé)</th></tr></thead><tbody>${ui.imp.map((r,i)=>{const ct=catOf(r.cat),ht=Math.abs(r.amt)/(1+r.rate/100);return `<tr><td class="l"><input type="checkbox" data-ext="imp" data-i="${i}" data-f="on"${r.on?' checked':''}> ${r.dup?'<span class="chip warn">doublon ?</span>':''}${r.auto?'<span class="chip good">règle</span>':''}</td><td class="l num">${fdate(r.date)}</td><td class="l">${esc(r.label)}</td><td class="num" style="color:var(--ttc)">${n2(r.amt)}</td><td class="l"><select data-ext="imp" data-i="${i}" data-f="cat" style="min-width:200px">${co.map(([k,l])=>`<option value="${k}"${k===r.cat?' selected':''}>${esc(l)}</option>`).join('')}</select></td><td class="l"><select data-ext="imp" data-i="${i}" data-f="rate" style="width:84px">${RATES.map(x=>`<option value="${x}"${x===r.rate?' selected':''}>${x} %</option>`).join('')}</select></td><td class="num" style="color:var(--ht)">${n2(ht)}</td><td class="l"><input type="text" data-ext="imp" data-i="${i}" data-f="kw" value="${esc(r.kw)}" placeholder="ex. edf" style="width:110px"></td></tr>`}).join('')}</tbody></table></div>
+<div class="row" style="margin-top:12px"><button class="pri" data-act="imp-do">Importer les lignes cochées</button></div></div>`}
+if(S.rules.length)h+=`<div class="card"><h2>Règles de catégorisation (${S.rules.length})</h2>${S.rules.map((r,i)=>`<div class="row" style="justify-content:space-between;align-items:center;margin-top:6px"><span>Libellé contenant <b>« ${esc(r.kw)} »</b> : ${r.cat} · ${esc(catOf(r.cat)?.n||'')}, TVA ${r.rate} %</span><button class="lnk danger" data-act="del-rule" data-i="${i}">Suppr.</button></div>`).join('')}</div>`;
+return h}
+EXT['imp-parse']=()=>{ui.imp=parseBank(ui.impText);if(ui.imp&&!ui.imp.length)toast('Aucune ligne exploitable.');return false?0:(render(),false)};
+EXT['imp-do']=()=>{let n=0;ui.imp.forEach(r=>{if(!r.on||S.locked[+r.date.slice(0,4)])return;const c=catOf(r.cat),sg=c.k==='vente'?(r.amt>=0?1:-1):(r.amt<0?1:-1);
+S.entries.push({id:uid(),date:r.date,label:r.label||'Opération bancaire',kind:c.k,cat:r.cat,ht:r2(sg*Math.abs(r.amt)/(1+r.rate/100)),rate:r.rate,delay:0,paid:r.date,dur:3,mode:'lin',act:''});
+const kw=r.kw.trim().toLowerCase();if(kw&&!S.rules.some(x=>x.kw===kw))S.rules.push({kw,cat:r.cat,rate:r.rate});n++});ui.imp=[];ui.impText='';toast(n+' pièce(s) importée(s).')};
+EXT['del-rule']=b=>{S.rules.splice(+b.dataset.i,1)};
+
+/* ===== MODÈLES RÉCURRENTS ===== */
+drafts.tpl={label:'',kind:'fixe',cat:'613',ht:'',rate:20,delay:0,start:todayISO,months:12,act:''};
+function viewTpl(){const d=drafts.tpl,cats=CATS.filter(c=>c.k===d.kind).map(c=>[c.a,c.a+' · '+c.n]);
+return `<div class="card"><h2>Nouveau modèle mensuel</h2><div class="row">${fld('Libellé',inp('tpl.label',d.label,'placeholder="Loyer, abonnement…"'),'f2')}${fld('Type',`<select data-dr2="tpl.kind">${Object.entries(KINDS).filter(k=>k[0]!=='immo').map(([k,l])=>`<option value="${k}"${d.kind===k?' selected':''}>${l}</option>`).join('')}</select>`)}${fld('Catégorie',sel('tpl.cat',cats,d.cat),'f2')}${fld('Montant HT (€)',inp('tpl.ht',d.ht))}${fld('TVA',sel('tpl.rate',rateOpts,d.rate))}${fld('Règlement après',sel('tpl.delay',[0,15,30,45,60].map(x=>[x,x?x+' jours':'comptant']),d.delay))}${fld('Premier mois',`<input type="date" data-draft="tpl.start" value="${d.start}">`)}${fld('Nombre de mois',inp('tpl.months',d.months))}${fld('Activité',inp('tpl.act',d.act))}<button class="pri" data-act="add-tpl">Ajouter et générer</button></div>
+<p class="note">Le modèle crée une pièce par mois. Vous pouvez ensuite le prolonger sans créer de doublon.</p></div>
+<div class="card"><h2>Modèles (${S.tpl.length})</h2>${S.tpl.map(t=>`<div class="row" style="justify-content:space-between;align-items:center;margin-top:8px"><span>${esc(t.label)} · ${n2(t.ht)} € HT (${n2(t.ht*(1+t.rate/100))} € TTC) · depuis ${fdate(t.start)}</span><span><button class="lnk" data-act="ext-tpl" data-id="${t.id}">Prolonger de 12 mois</button><button class="lnk danger" data-act="del-tpl" data-id="${t.id}">Suppr.</button></span></div>`).join('')||'<p style="margin:0;color:var(--muted)">Aucun modèle.</p>'}</div>`}
+function genTpl(t,n){let k=0;for(let i=0;i<n;i++){const dt=addMonths(t.start,i),key=t.id+'|'+dt.slice(0,7);if(S.entries.some(e=>e.tpl===key)||S.locked[+dt.slice(0,4)])continue;S.entries.push({id:uid(),date:dt,label:t.label,kind:t.kind,cat:t.cat,ht:t.ht,rate:t.rate,delay:t.delay,dur:3,mode:'lin',act:t.act||'',tpl:key});k++}return k}
+EXT['add-tpl']=()=>{const d=drafts.tpl,h=num(d.ht,NaN);if(!d.label.trim()||isNaN(h)){toast('Renseignez le libellé et le montant HT.');return false}
+const t={id:uid(),label:d.label.trim(),kind:d.kind,cat:d.cat,ht:h,rate:num(d.rate),delay:num(d.delay),start:d.start,act:d.act.trim()};S.tpl.push(t);toast(genTpl(t,Math.max(1,Math.min(60,num(d.months,12))))+' pièce(s) générée(s).');Object.assign(d,{label:'',ht:''})};
+EXT['ext-tpl']=b=>{const t=S.tpl.find(x=>x.id===b.dataset.id);if(t)toast(genTpl(t,Math.max(...S.entries.filter(e=>e.tpl&&e.tpl.startsWith(t.id)).map(e=>1+Math.round((Date.parse(e.date)-Date.parse(t.start))/2629800000)),0)+12)+' pièce(s) générée(s).')};
+EXT['del-tpl']=b=>{S.tpl=S.tpl.filter(x=>x.id!==b.dataset.id)};
+
+/* ===== PRÉVU ET RÉALISÉ ===== */
+function monthly(y,ents){const o={ca:[],cv:[],cf:[]};for(let i=0;i<12;i++){o.ca.push(P());o.cv.push(P());o.cf.push(P())}
+ents.forEach(e=>{if(+e.date.slice(0,4)!==y)return;const i=dparts(e.date)[1]-1,k={vente:'ca',varia:'cv',fixe:'cf'}[e.kind];if(k)o[k][i]=padd(o[k][i],P(e.ht,tt(e)))});return o}
+function viewPrev(){const y=S.settings.year,B=S.budget;let h=head('Prévu et réalisé','Figez votre prévisionnel, puis mettez vos pièces à jour avec la réalité : l\'écart apparaît mois par mois.');
+h+=`<div class="card"><div class="row" style="align-items:center"><button class="pri" data-act="freeze">${B?'Refiger le prévisionnel avec les pièces actuelles':'Figer le prévisionnel '+y}</button>${B?'<button class="danger" data-act="unfreeze">Supprimer le prévisionnel figé</button>':''}</div><p class="note">${B?'Prévisionnel figé de '+B.y+' le '+fdate(B.date)+'.':'Aucun prévisionnel figé. Saisissez d\'abord vos pièces prévues, puis figez-les.'}</p></div>`;
+if(!B)return h;const A=monthly(B.y,S.entries),Bd=B.m,cur=new Date().getFullYear()===B.y?new Date().getMonth():11;
+const res=(m,i)=>psub(psub(m.ca[i],m.cv[i]),m.cf[i]);
+const row=(l,k,sg)=>{const tot=(m)=>m[k].reduce((a,p)=>padd(a,p),P());return `<tr><td class="l">${l}${tags}</td>${MONTHS.map((_,i)=>`<td>${dual(sg?res(Bd,i):Bd[k][i])}</td>`).join('')}<td>${dual(sg?Bd.ca.reduce((a,p,i)=>padd(a,res(Bd,i)),P()):tot(Bd))}</td></tr>`};
+const mk=(l,k)=>{const f=(m,i)=>k==='res'?res(m,i):m[k][i],sm=m=>MONTHS.reduce((a,_,i)=>padd(a,f(m,i)),P());
+return `<tr class="strong"><td class="l" colspan="14">${l}</td></tr><tr><td class="l">Prévu${tags}</td>${MONTHS.map((_,i)=>`<td>${dual(f(Bd,i))}</td>`).join('')}<td>${dual(sm(Bd))}</td></tr><tr><td class="l">Réalisé${tags}</td>${MONTHS.map((_,i)=>`<td>${dual(f(A,i))}</td>`).join('')}<td>${dual(sm(A))}</td></tr><tr><td class="l">Écart${tags}</td>${MONTHS.map((_,i)=>{const d=psub(f(A,i),f(Bd,i));return `<td class="${(k==='cv'||k==='cf'?d.h>0:d.h<0)&&i<=cur?'neg':''}">${dual(d)}</td>`}).join('')}<td>${dual(psub(sm(A),sm(Bd)))}</td></tr>`};
+h+=`<div class="card"><div class="scroll"><table class="t wide"><thead><tr><th class="l">Montants en € (date de facture)</th>${MONTHS.map(m=>`<th>${m}</th>`).join('')}<th>Total</th></tr></thead><tbody>${mk('Chiffre d\'affaires','ca')}${mk('Charges variables','cv')}${mk('Charges fixes','cf')}${mk('Résultat d\'exploitation avant amortissements','res')}</tbody></table></div><p class="note">Une case rouge signale un écart défavorable sur un mois échu : moins de ventes ou plus de charges que prévu.</p></div>`;return h}
+EXT['freeze']=()=>{const y=S.settings.year;S.budget={y,date:todayISO,m:monthly(y,S.entries)};toast('Prévisionnel figé.')};
+EXT['unfreeze']=()=>{S.budget=null};
+
+/* ===== SCÉNARIOS ===== */
+drafts.scen={name:'',ca:'',delay:''};
+function viewScen(){const y=S.settings.year,names=['reel',...Object.keys(S.scen.list)];
+const rows=names.map(n=>withScen(n,()=>{const s=yearStats(y),T=treasury(y),c=srCalc();return `<tr class="${n===S.scen.cur?'strong':''}"><td class="l">${esc(n==='reel'?'réel (vos pièces)':n)}</td><td>${dual(s.ca)}</td><td>${dual(s.rn)}</td><td>${dual(s.caf)}</td><td>${dual(c.SRp)}</td><td>${dual(P(T.bH[11],T.bT[11]))}</td><td>${dual(P(Math.min(...T.bH),Math.min(...T.bT)))}</td></tr>`}));
+return head('Scénarios','Testez un chiffre d\'affaires plus bas ou plus haut, ou des clients qui paient plus tard, sans toucher à vos pièces.')+`<div class="card"><div class="scroll"><table class="t"><thead><tr><th class="l">Scénario</th><th>CA</th><th>Résultat net</th><th>CAF</th><th>Seuil (CA)</th><th>Trésorerie fin</th><th>Trésorerie minimum</th></tr></thead><tbody>${rows.join('')}</tbody></table></div><p class="note">Chaque cellule indique le HT puis le TTC. Choisissez le scénario actif dans l'en-tête : tous les onglets de prévision s'y adaptent. Le journal reste toujours basé sur vos pièces réelles.</p></div>
+<div class="card"><h2>Hypothèses</h2>${Object.entries(S.scen.list).map(([n,p])=>`<div class="row" style="align-items:flex-end;margin-bottom:8px"><div class="field f"><label>Scénario</label><b>${esc(n)}</b></div>${fld('Variation du chiffre d\'affaires (%)',`<input type="text" inputmode="decimal" data-ext="scenp" data-n="${esc(n)}" data-k="ca" value="${p.ca}">`)}${fld('Délai de paiement clients en plus (jours)',`<input type="text" inputmode="decimal" data-ext="scenp" data-n="${esc(n)}" data-k="delay" value="${p.delay}">`)}<button class="lnk danger" data-act="del-scen" data-n="${esc(n)}">Suppr.</button></div>`).join('')}
+<div class="row" style="margin-top:10px">${fld('Nouveau scénario',inp('scen.name',drafts.scen.name,'placeholder="Ex. Perte d\'un client"'),'f2')}${fld('Variation du CA (%)',inp('scen.ca',drafts.scen.ca))}${fld('Délai clients en plus (jours)',inp('scen.delay',drafts.scen.delay))}<button class="pri" data-act="add-scen">Ajouter</button></div><p class="note">Les charges variables suivent la variation du chiffre d'affaires. Les charges fixes restent inchangées.</p></div>`}
+EXT['add-scen']=()=>{const d=drafts.scen,n=d.name.trim().toLowerCase();if(!n||n==='reel'||S.scen.list[n]){toast('Choisissez un nom unique.');return false}S.scen.list[n]={ca:num(d.ca),delay:num(d.delay)};Object.assign(d,{name:'',ca:'',delay:''})};
+EXT['del-scen']=b=>{delete S.scen.list[b.dataset.n];if(S.scen.cur===b.dataset.n)S.scen.cur='reel'};
+
+/* ===== CLÔTURE ET CONTRÔLES ===== */
+function viewClo(){const y=S.settings.year,cl=S.closing[y]||(S.closing[y]={}),lk=!!S.locked[y],C=checks(),s=yearStats(y);
+const yrs=[];for(let k=minYear();k<=Math.max(y,minYear());k++)yrs.push(k);
+let h=head('Clôture et contrôles','Préparez la clôture de '+y+' : stocks, charges constatées d\'avance, provisions. Vérifiez la cohérence de vos pièces.');
+h+=`<div class="card"><h2>Écritures de clôture ${y}</h2><div class="row">${fld('Stock au 1er janvier (€)',bindIn('closing.'+y+'.stockStart',cl.stockStart??''))}${fld('Stock au 31 décembre (€)',bindIn('closing.'+y+'.stockEnd',cl.stockEnd??''))}${fld('Charges constatées d\'avance (€)',bindIn('closing.'+y+'.cca',cl.cca??''))}${fld('Provisions (€)',bindIn('closing.'+y+'.prov',cl.prov??''))}</div>
+<p class="note">Variation de stock : ${n2(num(cl.stockEnd)-num(cl.stockStart))} € (un stock qui augmente réduit les charges variables). Les charges constatées d'avance réduisent les charges fixes, les provisions les augmentent. Ces montants alimentent le résultat, la CAF et le plan de financement.</p></div>`;
+h+=`<div class="card"><h2>Exercices</h2><div class="scroll"><table class="t"><thead><tr><th class="l">Exercice</th><th>CA</th><th>Résultat net</th><th>Trésorerie fin (report)</th><th class="l">Statut</th><th></th></tr></thead><tbody>${yrs.map(k=>{const sk=yearStats(k),T=treasury(k);return `<tr><td class="l">${k}</td><td>${dual(sk.ca)}</td><td>${dual(sk.rn)}</td><td>${dual(P(T.bH[11],T.bT[11]))}</td><td class="l">${S.locked[k]?'<span class="chip">clôturé</span>':'<span class="chip good">ouvert</span>'}</td><td><button data-act="lock-year" data-y="${k}">${S.locked[k]?'Rouvrir':'Clôturer'}</button></td></tr>`}).join('')}</tbody></table></div><p class="note">Clôturer verrouille la saisie de l'exercice et crée un point de sauvegarde. La trésorerie de fin d'année est reportée automatiquement à l'ouverture de l'année suivante.</p></div>`;
+h+=`<div class="card"><h2>Contrôles de cohérence (${C.length})</h2>${C.length?C.slice(0,60).map(c=>`<p style="margin:0 0 6px"><span class="chip ${c.l==='err'?'bad':'warn'}">${c.l==='err'?'Erreur':'À vérifier'}</span> ${esc(c.m)}</p>`).join('')+(C.length>60?`<p class="note">${C.length-60} autres contrôles non affichés.</p>`:''):'<p style="margin:0"><span class="chip good">Aucune anomalie détectée</span></p>'}</div>`;
+return h}
+EXT['lock-year']=b=>{const k=+b.dataset.y;if(!S.locked[k])snapshot('Clôture '+k);S.locked[k]=!S.locked[k]};
+
+/* ===== PARAMÈTRES ===== */
+function viewPar(){const st=S.settings;if(!ui.hist&&!ui.histLoading){ui.histLoading=true;loadHist().then(()=>{ui.histLoading=false;if(tab==='parametres')render()})}
+const o=(v,a)=>a.map(([k,l])=>`<option value="${k}"${String(v)===k?' selected':''}>${l}</option>`).join('');
+return head('Paramètres','Régime fiscal, alertes, sauvegardes et exports.')+`<div class="card"><h2>Fiscalité</h2><div class="row">${fld('Régime de TVA',`<select data-bind="settings.tvaRegime">${o(st.tvaRegime,[['mensuel','Réel normal, déclaration mensuelle'],['trimestriel','Réel simplifié, déclaration trimestrielle'],['franchise','Franchise en base (pas de TVA)']])}</select>`,'f2')}${fld('TVA collectée sur les ventes',`<select data-bind="settings.tvaBasis">${o(st.tvaBasis,[['mixte','Marchandises : débits. Services : encaissements'],['deb','Tout sur les débits (à la facture)'],['enc','Tout sur les encaissements']])}</select>`,'f2')}${fld('Imposition',`<select data-bind="settings.tax">${o(st.tax,[['is','Impôt sur les sociétés (15 % / 25 %)'],['ir','Impôt sur le revenu (pas d\'IS)']])}</select>`,'f2')}</div></div>
+<div class="card"><h2>Trésorerie et alertes</h2><div class="row">${fld('Trésorerie de départ (€), au 1er janvier de la première année',bindIn('settings.opening',st.opening))}${fld('Première année suivie',bindIn('settings.first',st.first,String(minYear())))}${fld('Alerte si trésorerie sous (€ TTC)',bindIn('settings.cashAlert',st.cashAlert))}</div><p class="note">Les années suivantes reprennent automatiquement le solde de l'année précédente.</p></div>
+<div class="card"><h2>Exports</h2><div class="row"><button data-act="export-xlsx">Page en cours en Excel</button><button data-act="export-pdf">Page en cours en PDF</button><button data-act="export-fec">Fichier des écritures comptables (FEC)</button><button data-act="export-json">Sauvegarde complète (JSON)</button></div><p class="note">Les exports Excel et PDF reprennent les tableaux de la page affichée, avec une colonne HT et une colonne TTC. Le FEC est destiné à votre expert-comptable.</p></div>
+<div class="card"><h2>Historique des sauvegardes</h2><div class="row"><button data-act="snap-now">Créer un point de sauvegarde</button></div>${(ui.hist||[]).map((h,i)=>`<div class="row" style="justify-content:space-between;align-items:center;margin-top:8px"><span>${new Date(h.ts).toLocaleString('fr-FR')} · ${esc(h.reason||'')}</span><button class="lnk" data-act="restore" data-i="${i}">Restaurer</button></div>`).join('')||'<p class="note">Aucun point de sauvegarde. Un point est créé automatiquement toutes les 12 heures, avant un effacement et à chaque clôture.</p>'}</div>
+<div class="card"><h2>Partage avec votre comptable</h2><p style="margin:0">Utilisez le menu Partager de la page pour inviter votre expert-comptable. Selon le niveau d'accès, il consulte en lecture seule ou modifie avec vous. Un lecteur voit vos chiffres en direct, sans pouvoir les changer.</p></div>
+<div class="card"><h2>Données</h2><div class="row"><button data-act="load-demo">Recharger les données d'exemple</button><button class="danger" data-act="reset">Tout effacer</button></div></div>`}
+EXT['snap-now']=()=>{snapshot('Manuel').then(()=>loadHist()).then(()=>render());toast('Point de sauvegarde créé.');return false};
+EXT['restore']=b=>{const h=ui.hist[+b.dataset.i];if(!h)return false;snapshot('Avant restauration');unpack(h).then(o=>{S=norm(o);save();render();toast('Version restaurée.')});return false};
+/* ===== compression et démarrage ===== */
+async function pack(o){const json=JSON.stringify(o);if(typeof CompressionStream==='undefined')return{v:1,json};
+try{const cs=new CompressionStream('gzip'),w=cs.writable.getWriter();w.write(new TextEncoder().encode(json));w.close();const buf=new Uint8Array(await new Response(cs.readable).arrayBuffer());let b='';for(let i=0;i<buf.length;i+=8192)b+=String.fromCharCode.apply(null,buf.subarray(i,i+8192));return{v:1,z:btoa(b)}}catch(e){return{v:1,json}}}
+async function unpack(d){if(d.z){const bin=atob(d.z),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);const ds=new DecompressionStream('gzip'),w=ds.writable.getWriter();w.write(u);w.close();return JSON.parse(await new Response(ds.readable).text())}
+if(d.json)return JSON.parse(d.json);if(typeof d.data==='string')return JSON.parse(d.data);return d}
+document.addEventListener('change',async e=>{const t=e.target,x=t.dataset.ext,k=t.dataset.dr2;
+if(k){const d=drafts.tpl;if(k==='tpl.kind'){d.kind=t.value;const c=CATS.find(q=>q.k===d.kind);d.cat=c.a;d.rate=c.r;render()}return}
+if(!x)return;
+if(x==='scen'){S.scen.cur=t.value;save();render()}
+else if(x==='scenp'){const p=S.scen.list[t.dataset.n];if(p){p[t.dataset.k]=num(t.value);save();render()}}
+else if(x==='imp'){const r=ui.imp[+t.dataset.i],f=t.dataset.f;if(f==='on')r.on=t.checked;else if(f==='cat'){r.cat=t.value;r.rate=catOf(t.value).r;render()}else if(f==='rate'){r.rate=num(t.value);render()}else r.kw=t.value}
+else if(x==='bank-file'){const f=t.files[0];if(f){ui.impText=await f.text();ui.imp=parseBank(ui.impText);render()}}
+else if(x==='att'){const f=t.files[0];if(!f||!ASSETS)return;try{const r=await ASSETS.upload(f);drafts.entry.att={id:r.id,url:r.url,name:f.name};render()}catch(err){toast('Envoi impossible (droits d\'édition requis).')}}});
+document.addEventListener('input',e=>{if(e.target.dataset.ext==='imp-text')ui.impText=e.target.value});
+let rawLocal=null;
+try{rawLocal=localStorage.getItem(KEY);S=rawLocal?norm(JSON.parse(rawLocal)):demoState()}catch(e){S=demoState()}
 render();
-(async()=>{try{const [db,user,d]=await Promise.all([window.claude?.use('db'),window.claude?.use('user'),window.claude?.use('downloads')]);dl=d||null;
-const id=user?await user.id():null;if(db&&id){dbDoc=db.collection('data/users/'+id).doc('compta');const snap=await dbDoc.get();
-if(snap.exists&&!ui.dirty){S=Object.assign(emptyState(),snap.data());render()}setSave('Enregistré sur votre compte (privé)')}else setSave(localStorage.getItem(KEY)?'Enregistré sur cet appareil':'')}catch(e){}})();
+(async()=>{try{const c=window.claude;if(!c)return;
+const [db,user,d,as]=await Promise.all([c.use('db'),c.use('user'),c.use('downloads'),c.use('assets')]);dl=d||null;ASSETS=as||null;
+const id=user?await user.id():null,ed=user?await user.canEdit():false;RO=false;
+if(db&&id){DB=db;const shared=db.doc('ledger/main');let snap=await shared.get();
+if(snap.exists){S=norm(await unpack(snap.data()))}
+else if(ed){const old=await db.collection('data/users/'+id).doc('compta').get();if(old.exists)S=norm(await unpack(old.data()));if(old.exists||(rawLocal&&!S.demo))save()}
+if(ed){dbDoc=shared;setSave('Enregistré sur votre compte')}
+else{RO=true;setSave('Lecture seule');shared.onSnapshot(async s=>{if(s.exists&&!s.metadata.hasPendingWrites){S=norm(await unpack(s.data()));render()}},()=>{})}
+render()}
+else{if(ed&&!id){}setSave(localStorage.getItem(KEY)?'Enregistré sur cet appareil':'')}}catch(e){console.error(e)}})();
 })();
 </script>
 
