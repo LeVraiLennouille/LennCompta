@@ -97,7 +97,7 @@ function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeou
 const dual=(p,f=n0)=>`<div class="dual"><span class="h">${f(p.h)}</span><span class="t">${f(p.t)}</span></div>`;
 const tags='<span class="tags"><i class="h">HT</i><i class="t">TTC</i></span>';
 const kpi=(l,p,sub='')=>`<div class="kpi"><div class="kl">${l}</div><div class="kv"><span class="h">${e0(p.h)}</span><span class="tag h">HT</span></div><div class="kv"><span class="t">${e0(p.t)}</span><span class="tag t">TTC</span></div>${sub?`<div class="ks">${sub}</div>`:''}</div>`;
-const head=(t,l)=>`<div><h1>${t}</h1><p class="lead">${l}</p></div>`;
+const head=(t,l)=>`<div class="pagehead"><h1>${t}</h1><p class="lead">${l}</p></div>`;
 const fld=(l,inner,c='f')=>`<div class="field ${c}"><label>${l}</label>${inner}</div>`;
 const inp=(p,v,extra='')=>`<input type="text" inputmode="decimal" autocomplete="off" data-draft="${p}" value="${esc(v)}" ${extra}>`;
 const sel=(p,opts,v,extra='')=>`<select data-draft="${p}" ${extra}>${opts.map(([k,l])=>`<option value="${esc(k)}"${String(k)===String(v)?' selected':''}>${esc(l)}</option>`).join('')}</select>`;
@@ -108,9 +108,9 @@ function niceStep(x){const m=Math.pow(10,Math.floor(Math.log10(x||1))),r=x/m;ret
 function lineChart(series,labels){const w=760,h=250,pd={l:64,r:14,t:12,b:26};const all=series.flatMap(s=>s.v);let mn=Math.min(0,...all),mx=Math.max(0,...all);if(mx===mn)mx=mn+1;
 const st=niceStep((mx-mn)/4);mn=Math.floor(mn/st)*st;mx=Math.ceil(mx/st)*st;
 const X=i=>pd.l+(w-pd.l-pd.r)*i/(labels.length-1),Y=v=>pd.t+(h-pd.t-pd.b)*(1-(v-mn)/(mx-mn));let g='';
-for(let v=mn;v<=mx+st/1000;v+=st)g+=`<line x1="${pd.l}" x2="${w-pd.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" ${Math.abs(v)<1e-9?'stroke-width="1.5"':''}/><text class="ax" x="${pd.l-6}" y="${Y(v)+4}" text-anchor="end">${n0(v)}</text>`;
+for(let v=mn;v<=mx+st/1000;v+=st)g+=`<line x1="${pd.l}" x2="${w-pd.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${Math.abs(v)<1e-9?'var(--line2)':'var(--line)'}" ${Math.abs(v)<1e-9?'stroke-width="1.5"':'stroke-dasharray="2 5"'}/><text class="ax" x="${pd.l-6}" y="${Y(v)+4}" text-anchor="end">${n0(v)}</text>`;
 labels.forEach((l,i)=>g+=`<text class="ax" x="${X(i)}" y="${h-8}" text-anchor="middle">${l}</text>`);
-series.forEach(s=>{const d=s.v.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(' ');g+=`<path d="${d}" fill="none" stroke="${s.c}" stroke-width="2"/><circle cx="${X(s.v.length-1)}" cy="${Y(s.v[s.v.length-1])}" r="4" fill="${s.c}"/>`});
+const gid='g'+Math.random().toString(36).slice(2,7);let defs='';series.forEach((s,k)=>{const d=s.v.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(' '),b=Y(Math.max(mn,0)),lx=X(s.v.length-1),ly=Y(s.v[s.v.length-1]);defs+=`<linearGradient id="${gid}${k}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:${s.c};stop-opacity:.22"/><stop offset="1" style="stop-color:${s.c};stop-opacity:0"/></linearGradient>`;g+=`<path d="${d} L${lx.toFixed(1)} ${b.toFixed(1)} L${X(0).toFixed(1)} ${b.toFixed(1)}Z" fill="url(#${gid}${k})"/><path d="${d}" fill="none" stroke="${s.c}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${lx}" cy="${ly}" r="8" style="fill:${s.c};fill-opacity:.16"/><circle cx="${lx}" cy="${ly}" r="4" style="fill:${s.c}" stroke="var(--surface)" stroke-width="1.5"/>`});g=`<defs>${defs}</defs>`+g;
 return `<svg class="ch" viewBox="0 0 ${w} ${h}" role="img" aria-label="Graphique">${g}</svg>`}
 
 /* ===== COMPTABILITÉ AUTOMATIQUE ===== */
@@ -853,12 +853,15 @@ const TABS=[['accueil','Accueil',viewAccueil,'Pilotage'],['groupe','Vue groupe',
 ['jeux','Jeux et CIJV',viewJeux,'Studio','game'],['equipe','Équipe et runway',viewEquipe,'Studio','game'],['cnc','CNC, CIJV et JEI',viewCnc,'Studio','game'],['studio2','Indicateurs studio',viewStudio2,'Studio','game'],
 ['paie','Paie réelle',viewPaie,'Équipe et frais'],['frais','Notes de frais et IK',viewFrais,'Équipe et frais'],
 ['statuts','Statuts juridiques',viewStatuts,'Réglages'],['remu','Rémunération dirigeant',viewRemu,'Réglages'],['parametres','Paramètres',viewPar,'Réglages']];
+const GI={'Pilotage':'<path d="M12 14l4-5"/><path d="M3.5 17a9 9 0 1 1 17 0"/>','Comptabilité':'<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/>','Prévisions':'<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>','Pilotage commercial':'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".8"/>','Freelance UI/UX':'<path d="M4 20l1-4L17 4l3 3L8 19z"/>','Studio':'<rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 12.5h4M9 10.5v4"/>','Équipe et frais':'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 20a6.5 6.5 0 0 0-3-5.5"/>','Réglages':'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>'};
 function render(){const vt=TABS.filter(t=>!t[4]||t[4]===S.profile);if(!vt.find(t=>t[0]===tab)){if(tab!=='accueil'){location.replace('accueil.html');return}tab='accueil'}const ys=[];for(let y=2024;y<=2034;y++)ys.push(y);
 $('#yearSel').innerHTML=ys.map(y=>`<option${y===S.settings.year?' selected':''}>${y}</option>`).join('');$('#coName').value=S.settings.name;
 $('#coSel').innerHTML=W.companies.map(c=>`<option value="${c.id}"${c.id===W.active?' selected':''}>${esc(c.data.settings.name)}</option>`).join('');$('#coSel').hidden=W.companies.length<2;
 $('#scenSel').innerHTML=[['reel','Scénario : réel'],...Object.keys(S.scen.list).map(k=>[k,'Scénario : '+k])].map(([k,l])=>`<option value="${esc(k)}"${k===S.scen.cur?' selected':''}>${esc(l)}</option>`).join('');
-let g='',nv='';vt.forEach(t=>{if(t[3]!==g){g=t[3];nv+=`<div class="ng">${g}</div>`}nv+=`<a href="${t[0]}.html" class="${t[0]===tab?'on':''}">${t[1]}</a>`});$('#nav').innerHTML=nv;
-try{$('#view').innerHTML=vt.find(t=>t[0]===tab)[2]()}catch(e){$('#view').innerHTML='<div class="card">Une erreur est survenue dans ce module : '+esc(e.message)+'</div>';console.error(e)}}
+let g='',nv='';vt.forEach(t=>{if(t[3]!==g){g=t[3];nv+=`<div class="ng"><svg viewBox="0 0 24 24" aria-hidden="true">${GI[g]||''}</svg>${g}</div>`}nv+=`<a href="${t[0]}.html" class="${t[0]===tab?'on':''}"${t[0]===tab?' aria-current="page"':''}>${t[1]}</a>`});$('#nav').innerHTML=nv;const cur=vt.find(t=>t[0]===tab);$('#pageName').textContent=cur[1];const on=$('#nav a.on'),sd=$('#side');if(on&&sd)sd.scrollTop=Math.max(0,on.offsetTop-140);
+try{$('#view').innerHTML='<div class="crumb">'+esc(cur[3])+'</div>'+cur[2]()}catch(e){$('#view').innerHTML='<div class="card">Une erreur est survenue dans ce module : '+esc(e.message)+'</div>';console.error(e)}}
+document.addEventListener('click',e=>{if(e.target.closest('#menuBtn')){const o=document.documentElement.classList.toggle('menu');$('#menuBtn').setAttribute('aria-expanded',o)}else if(e.target.id==='scrim')document.documentElement.classList.remove('menu')});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')document.documentElement.classList.remove('menu')});
 document.addEventListener('click',async e=>{const a=e.target.closest('a[href$=".html"]');if(!a||e.defaultPrevented||e.ctrlKey||e.metaKey||e.shiftKey||e.button)return;if(ui.dirty&&dbDoc&&!RO){e.preventDefault();clearTimeout(saveT);try{await Promise.race([flush(),new Promise(r=>setTimeout(r,2500))])}catch(x){}ui.dirty=false;location.href=a.href}});
 
 /* ===== PARAMÈTRES : ENTREPRISES, MENTIONS LÉGALES, RESTAURATION ===== */
